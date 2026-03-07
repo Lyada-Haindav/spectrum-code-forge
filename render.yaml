@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: spectrum-code-forge-backend
+    runtime: docker
+    plan: starter
+    region: singapore
+    rootDir: Downloads/coder
+    dockerfilePath: Downloads/coder/Dockerfile
+    dockerContext: Downloads/coder
+    autoDeployTrigger: commit
+    healthCheckPath: /
+    disk:
+      name: spectrum-code-forge-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: DATA_DIR
+        value: /var/data/spectrum-code-forge
+      - key: FREE_DAILY_LIMIT
+        value: "6"
+      - key: PREMIUM_PRICE_INR
+        value: "299"
+      - key: PREMIUM_UPI_NAME
+        value: Spectrum Code Forge
+      - key: APP_BASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash-lite
+      - key: PREMIUM_UPI_ID
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: Spectrum Code Forge

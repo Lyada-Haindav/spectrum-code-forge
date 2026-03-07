@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coding Solver</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="builder-page home-page">
+    <div class="builder-glow builder-glow-coral"></div>
+    <div class="builder-glow builder-glow-cyan"></div>
+    <div class="builder-glow builder-glow-gold"></div>
+
+    <header class="builder-topbar">
+      <a class="brand-mark brand-mark-light" href="/">Solver</a>
+      <nav class="builder-nav">
+        <a href="/">Home</a>
+        <a href="/builder.html">Solver</a>
+        <a href="#study-flow">Study flow</a>
+      </nav>
+      <div class="topbar-actions">
+        <div class="guest-actions" data-auth-guest>
+          <button class="ghost-button ghost-button-light" type="button" data-auth-open="signin">Sign in</button>
+          <button class="primary-button topbar-primary" type="button" data-auth-open="signup">Create account</button>
+        </div>
+        <div class="account-pill" data-auth-user hidden>
+          <span class="account-name" data-auth-name></span>
+          <a class="account-link" href="/builder.html">Workspace</a>
+          <button class="account-action" type="button" data-auth-logout>Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="builder-shell home-shell">
+      <section class="home-hero-grid">
+        <article class="builder-panel home-hero-card">
+          <div class="home-hero-split">
+            <div class="home-hero-copy">
+              <p class="eyebrow eyebrow-light">Coding workspace</p>
+              <h1>Solve problems, study the logic, and keep every answer ready</h1>
+              <p class="home-lead">
+                Paste any coding question, generate a clean structured answer, and come
+                back to your saved chats whenever you want to revise.
+              </p>
+              <div class="hero-actions">
+                <button class="hero-button hero-button-primary" type="button" data-workspace-entry>Open Solver</button>
+                <button class="hero-button hero-button-secondary hero-button-dark" type="button" data-auth-open="signup" data-auth-guest>
+                  Save your chats
+                </button>
+              </div>
+            </div>
+
+            <div class="home-hero-visual" aria-hidden="true">
+              <div class="home-hero-orb home-hero-orb-blue"></div>
+              <div class="home-hero-orb home-hero-orb-gold"></div>
+              <div class="home-hero-preview">
+                <div class="home-hero-preview-top">
+                  <span>Solver flow</span>
+                  <strong>Ready</strong>
+                </div>
+                <div class="home-hero-preview-board">
+                  <div class="home-hero-preview-lines">
+                    <span class="is-long"></span>
+                    <span class="is-mid"></span>
+                    <span class="is-short"></span>
+                  </div>
+                  <div class="home-hero-preview-pills">
+                    <span>Logic</span>
+                    <span>Code</span>
+                    <span>Tests</span>
+                  </div>
+                  <div class="home-hero-preview-metrics">
+                    <article class="home-hero-metric">
+                      <strong>O(N)</strong>
+                      <span>Constraint fit</span>
+                    </article>
+                    <article class="home-hero-metric">
+                      <strong>Java + More</strong>
+                      <span>Primary output</span>
+                    </article>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="home-stat-row">
+            <article class="home-stat-card">
+              <span>Questions</span>
+              <strong>Contest, interview, DSA</strong>
+            </article>
+            <article class="home-stat-card">
+              <span>Output</span>
+              <strong>Logic, code, tests</strong>
+            </article>
+            <article class="home-stat-card">
+              <span>Flow</span>
+              <strong>Save and reopen later</strong>
+            </article>
+          </div>
+        </article>
+
+        <aside class="builder-panel home-side-card">
+          <p class="section-kicker section-kicker-light">Saved study history</p>
+          <h2>Pick up where you stopped</h2>
+          <p class="home-side-copy">
+            Sign in once and your previous coding chats stay attached to your account,
+            ready to open again from the workspace.
+          </p>
+          <div class="home-history-preview">
+            <p id="home-history-guest" class="home-history-note">Sign in to see your real saved chats here.</p>
+            <p id="home-history-empty" class="home-history-note" hidden>No saved chats yet. Generate a solution and it will appear here.</p>
+            <div id="home-history-list" class="home-history-list" hidden></div>
+          </div>
+          <div class="home-side-actions">
+            <button class="home-cta home-cta-primary" type="button" data-auth-open="signup" data-auth-guest>
+              <span class="home-cta-kicker">New account</span>
+              <strong>Create account</strong>
+              <span class="home-cta-copy">Save every coding chat and reopen them later.</span>
+            </button>
+            <button id="workspace-entry" class="home-cta home-cta-secondary home-cta-workspace" type="button" data-workspace-entry>
+              <span class="home-cta-kicker">Workspace</span>
+              <strong>Sign in to enter</strong>
+              <span class="home-cta-copy">Code output unlocks only after sign in.</span>
+            </button>
+          </div>
+        </aside>
+      </section>
+
+      <section class="home-feature-grid">
+        <article class="builder-panel home-feature-card accent-coral">
+          <p class="feature-label">Constraint first</p>
+          <h2>Choose the right algorithm</h2>
+          <p>Push the answer toward the complexity that fits the limits instead of generic templates.</p>
+        </article>
+        <article class="builder-panel home-feature-card accent-cyan">
+          <p class="feature-label">Study clearly</p>
+          <h2>Read the idea before the code</h2>
+          <p>Keep the core idea, steps, complexity, edge cases, and tests easy to revise.</p>
+        </article>
+        <article class="builder-panel home-feature-card accent-gold">
+          <p class="feature-label">Return later</p>
+          <h2>Save previous coding chats</h2>
+          <p>Open an old question, inspect the generated answer again, and continue studying from there.</p>
+        </article>
+      </section>
+
+      <section id="study-flow" class="builder-panel home-flow-panel">
+        <div class="flow-copy">
+          <p class="eyebrow eyebrow-light">Study flow</p>
+          <h2>Question in. Reasoning first. Code ready.</h2>
+          <p>
+            Use the workspace for solving, then keep the best answers in your
+            history so revision is fast when you come back.
+          </p>
+        </div>
+        <div class="home-flow-grid">
+          <article class="home-flow-step">
+            <span>01</span>
+            <strong>Paste the full problem</strong>
+            <p>Add the statement, constraints, examples, and any contest-specific requirements.</p>
+          </article>
+          <article class="home-flow-step">
+            <span>02</span>
+            <strong>Generate the solution</strong>
+            <p>Get the logic, complexity fit, code, and focused tests in one study-friendly view.</p>
+          </article>
+          <article class="home-flow-step">
+            <span>03</span>
+            <strong>Reopen saved chats</strong>
+            <p>Sign in and keep every strong solution available in your personal history panel.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="auth-modal">
+        <div class="auth-modal-head">
+          <div class="auth-tab-row">
+            <button class="auth-tab is-active" type="button" data-auth-view="signin">Sign in</button>
+            <button class="auth-tab" type="button" data-auth-view="signup">Create account</button>
+          </div>
+          <button id="auth-close" class="modal-close" type="button" aria-label="Close authentication panel">
+            <span class="modal-close-mark" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="auth-intro">
+          <p id="auth-kicker" class="auth-kicker">Workspace access</p>
+          <h2 id="auth-title" class="auth-title">Sign in and continue</h2>
+          <p id="auth-copy" class="auth-copy">Unlock full code output, saved history, and quick revision.</p>
+        </div>
+
+        <div id="auth-message" class="inline-message" hidden></div>
+
+        <form id="signin-form" class="auth-form">
+          <label class="field">
+            <span>Email</span>
+            <input id="signin-email" name="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <div class="input-shell">
+              <input id="signin-password" name="password" type="password" placeholder="Minimum 8 characters" required />
+              <button class="field-toggle" type="button" data-password-toggle="signin-password">Show</button>
+            </div>
+            <small class="field-note">Use the password linked to your account.</small>
+          </label>
+          <button class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Continue</span>
+            <strong>Sign in</strong>
+          </button>
+        </form>
+
+        <form id="signup-form" class="auth-form" hidden>
+          <label class="field">
+            <span>Name</span>
+            <input id="signup-name" name="name" type="text" placeholder="Your name" required />
+          </label>
+          <label class="field">
+            <span>Email</span>
+            <input id="signup-email" name="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <div class="input-shell">
+              <input id="signup-password" name="password" type="password" placeholder="Minimum 8 characters" required />
+              <button class="field-toggle" type="button" data-password-toggle="signup-password">Show</button>
+            </div>
+            <small class="field-note">Use at least 8 characters.</small>
+          </label>
+          <button class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Start now</span>
+            <strong>Create account</strong>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script src="/shared.js"></script>
+  </body>
+</html>

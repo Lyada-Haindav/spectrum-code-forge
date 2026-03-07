@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coding Solver Workspace</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="builder-page">
+    <div class="builder-glow builder-glow-coral"></div>
+    <div class="builder-glow builder-glow-cyan"></div>
+    <div class="builder-glow builder-glow-gold"></div>
+
+    <header class="builder-topbar">
+      <a class="brand-mark brand-mark-light" href="/">Solver</a>
+      <nav class="builder-nav">
+        <a href="/">Home</a>
+        <a href="#builder-form">Solver</a>
+      </nav>
+      <div class="topbar-actions">
+        <div class="guest-actions" data-auth-guest>
+          <button class="ghost-button ghost-button-light" type="button" data-auth-open="signin">Sign in</button>
+          <button class="primary-button topbar-primary" type="button" data-auth-open="signup">Create account</button>
+        </div>
+        <div class="account-pill" data-auth-user hidden>
+          <span class="account-name" data-auth-name></span>
+          <button class="account-action" type="button" data-auth-logout>Log out</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="builder-shell">
+      <section class="builder-hero">
+        <div>
+          <p class="eyebrow eyebrow-light">Coding workspace</p>
+          <h1>Build logic that fits the constraints</h1>
+          <p>
+            Paste the question, choose the target languages, and get a structured
+            answer focused on solving the problem.
+          </p>
+        </div>
+        <div class="builder-hero-strip">
+          <span>Logic</span>
+          <span>Complexity</span>
+          <span>Code</span>
+          <span>History</span>
+        </div>
+      </section>
+
+      <section class="builder-layout">
+        <section class="builder-panel builder-input-panel">
+          <div class="section-head section-head-light">
+            <div>
+              <p class="section-kicker section-kicker-light">Input</p>
+              <h2>Shape the problem</h2>
+            </div>
+            <div class="action-row">
+              <button id="toggle-input" class="ghost-button ghost-button-light" type="button" hidden>Edit prompt</button>
+              <button id="load-demo" class="ghost-button ghost-button-light" type="button">Load demo</button>
+              <button id="clear-form" class="ghost-button ghost-button-light" type="button">Clear</button>
+            </div>
+          </div>
+
+          <section id="input-summary" class="input-summary" hidden></section>
+
+          <section class="plan-panel">
+            <div class="plan-copy">
+              <p class="section-kicker section-kicker-light">Plan</p>
+              <h3 id="plan-title">Free access</h3>
+              <p id="plan-copy">Sign in to start solving with your daily free quota.</p>
+            </div>
+            <div class="plan-actions">
+              <div id="plan-badge" class="plan-badge">6 per day</div>
+              <button id="upgrade-button" class="primary-button plan-upgrade-button" type="button">Upgrade with UPI</button>
+            </div>
+          </section>
+
+          <section id="history-panel" class="history-panel">
+            <div class="section-head section-head-light history-head">
+              <div>
+                <p class="section-kicker section-kicker-light">History</p>
+                <h3>Previous chats</h3>
+              </div>
+              <button id="history-refresh" class="ghost-button ghost-button-light" type="button">Refresh</button>
+            </div>
+            <div class="history-toolbar">
+              <label class="history-search">
+                <input id="history-search" type="text" placeholder="Search previous chats" autocomplete="off" />
+              </label>
+              <div id="history-summary" class="history-summary">Pinned first</div>
+            </div>
+            <div id="history-guest" class="history-empty">
+              <p>Sign in to save and reopen your previous coding chats.</p>
+              <button class="ghost-button ghost-button-light" type="button" data-auth-open="signin">Sign in</button>
+            </div>
+            <p id="history-empty" class="history-empty" hidden>No saved chats yet.</p>
+            <div id="history-list" class="history-list" hidden></div>
+          </section>
+
+          <form id="builder-form" class="builder-form">
+            <label class="field">
+              <span>Problem statement</span>
+              <textarea
+                id="problem-statement"
+                name="problemStatement"
+                rows="9"
+                placeholder="Paste the full coding question here."
+                required
+              ></textarea>
+            </label>
+
+            <div class="field-grid two-up">
+              <label class="field">
+                <span>Constraints</span>
+                <textarea
+                  id="constraints"
+                  name="constraints"
+                  rows="5"
+                  placeholder="Example: 1 <= n <= 2e5, sum of n across tests <= 2e5."
+                ></textarea>
+              </label>
+
+              <label class="field">
+                <span>Examples</span>
+                <textarea
+                  id="examples"
+                  name="examples"
+                  rows="5"
+                  placeholder="Sample input/output or function examples."
+                ></textarea>
+              </label>
+            </div>
+
+            <div class="field-grid three-up">
+              <label class="field">
+                <span>Primary language</span>
+                <select id="primary-language" name="primaryLanguage">
+                  <option value="Java">Java</option>
+                  <option value="C++">C++</option>
+                  <option value="Python">Python</option>
+                  <option value="JavaScript">JavaScript</option>
+                  <option value="TypeScript">TypeScript</option>
+                  <option value="Go">Go</option>
+                  <option value="Rust">Rust</option>
+                  <option value="C#">C#</option>
+                  <option value="Kotlin">Kotlin</option>
+                  <option value="Swift">Swift</option>
+                  <option value="PHP">PHP</option>
+                  <option value="Ruby">Ruby</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Solution mode</span>
+                <select id="solution-mode" name="solutionMode">
+                  <option value="logic_and_code">Logic + code</option>
+                  <option value="contest_ready">Contest ready</option>
+                  <option value="logic_only">Logic only</option>
+                </select>
+              </label>
+
+              <label class="field">
+                <span>Interface style</span>
+                <select id="interface-style" name="interfaceStyle">
+                  <option value="competitive_programming">Competitive programming</option>
+                  <option value="function_signature">Function/class method</option>
+                  <option value="script_snippet">Plain script/snippet</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="field-grid two-up">
+              <label class="field">
+                <span>Additional languages</span>
+                <input
+                  id="alternate-languages"
+                  name="alternateLanguages"
+                  type="text"
+                  placeholder="Example: C++, Python, Go"
+                />
+              </label>
+
+              <label class="field">
+                <span>Explanation depth</span>
+                <select id="explanation-depth" name="explanationDepth">
+                  <option value="balanced">Balanced</option>
+                  <option value="short">Short</option>
+                  <option value="deep">Deep</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="field">
+              <span>Additional requirements</span>
+              <textarea
+                id="additional-requirements"
+                name="additionalRequirements"
+                rows="4"
+                placeholder="Example: use fast I/O, avoid recursion, or prove the greedy choice."
+              ></textarea>
+            </label>
+
+            <div class="helper-stack helper-stack-dark">
+              <p class="section-kicker section-kicker-light">Quick helpers</p>
+              <div class="helper-chips">
+                <button class="helper-chip helper-chip-coral" data-helper="Use fast I/O." type="button">Fast I/O</button>
+                <button class="helper-chip helper-chip-cyan" data-helper="Explain why the complexity fits the constraints." type="button">Constraint proof</button>
+                <button class="helper-chip helper-chip-gold" data-helper="Avoid recursion if possible." type="button">No recursion</button>
+                <button class="helper-chip helper-chip-emerald" data-helper="Handle edge cases explicitly." type="button">Edge cases</button>
+              </div>
+            </div>
+
+            <div class="submit-strip submit-strip-dark">
+              <p id="submit-hint">Focus the request on the exact coding task, limits, and required output style.</p>
+              <button id="generate-button" class="primary-button" type="submit">Forge solution</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="builder-output-column">
+          <div id="message-banner" class="message-banner message-banner-dark" hidden></div>
+
+          <section id="empty-state" class="builder-panel placeholder-panel placeholder-panel-dark">
+            <p class="section-kicker section-kicker-light">Output</p>
+            <h2 id="empty-state-title">Ready for the next problem</h2>
+            <p id="empty-state-copy">
+              The result view will show the core idea, algorithm steps, complexity,
+              code tabs, and focused tests.
+            </p>
+          </section>
+
+          <section id="loading-state" class="builder-panel loading-panel loading-panel-dark" hidden>
+            <div class="loader-ring"></div>
+            <div class="loading-copy-stack">
+              <p class="section-kicker section-kicker-light">Generating</p>
+              <h2 id="loading-title">Analyzing the problem</h2>
+              <p id="loading-copy">Checking the constraints, selecting an algorithm, and building the answer.</p>
+              <div id="loading-steps" class="loading-steps"></div>
+            </div>
+          </section>
+
+          <section id="result-view" class="result-stack" hidden></section>
+        </section>
+      </section>
+    </main>
+
+    <div id="premium-modal" class="modal-backdrop" hidden>
+      <div class="auth-modal premium-modal">
+        <div class="auth-modal-head premium-modal-head">
+          <div class="premium-modal-copy">
+            <p class="auth-kicker">Premium access</p>
+            <h2 class="auth-title">Unlimited daily solves</h2>
+            <p class="auth-copy">
+              Pay once with UPI, then enter the payment reference to unlock premium on this account.
+            </p>
+          </div>
+          <button id="premium-close" class="modal-close" type="button" aria-label="Close premium panel">
+            <span class="modal-close-mark" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div id="premium-message" class="inline-message" hidden></div>
+
+        <div class="premium-grid">
+          <article class="premium-card">
+            <span>Price</span>
+            <strong id="premium-price">INR 299</strong>
+            <p>Unlimited daily solver access for this account.</p>
+          </article>
+          <article class="premium-card">
+            <span>UPI ID</span>
+            <strong id="premium-upi-id">-</strong>
+            <p id="premium-note">Use any UPI app to complete the payment.</p>
+          </article>
+        </div>
+
+        <div class="premium-actions">
+          <a id="premium-pay-link" class="primary-button home-link-button" href="#">Pay with UPI</a>
+          <button id="premium-copy-upi" class="ghost-button ghost-button-light" type="button">Copy UPI ID</button>
+        </div>
+
+        <form id="premium-form" class="auth-form">
+          <label class="field">
+            <span>Payment reference / UTR</span>
+            <input
+              id="premium-reference"
+              name="transactionReference"
+              type="text"
+              placeholder="Enter the UTR after payment"
+              autocomplete="off"
+              required
+            />
+          </label>
+          <button id="premium-submit" class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Unlock account</span>
+            <strong>Activate premium</strong>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div id="auth-modal" class="modal-backdrop" hidden>
+      <div class="auth-modal">
+        <div class="auth-modal-head">
+          <div class="auth-tab-row">
+            <button class="auth-tab is-active" type="button" data-auth-view="signin">Sign in</button>
+            <button class="auth-tab" type="button" data-auth-view="signup">Create account</button>
+          </div>
+          <button id="auth-close" class="modal-close" type="button" aria-label="Close authentication panel">
+            <span class="modal-close-mark" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="auth-intro">
+          <p id="auth-kicker" class="auth-kicker">Workspace access</p>
+          <h2 id="auth-title" class="auth-title">Sign in and continue</h2>
+          <p id="auth-copy" class="auth-copy">Unlock full code output, saved history, and quick revision.</p>
+        </div>
+
+        <div id="auth-message" class="inline-message" hidden></div>
+
+        <form id="signin-form" class="auth-form">
+          <label class="field">
+            <span>Email</span>
+            <input id="signin-email" name="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <div class="input-shell">
+              <input id="signin-password" name="password" type="password" placeholder="Minimum 8 characters" required />
+              <button class="field-toggle" type="button" data-password-toggle="signin-password">Show</button>
+            </div>
+            <small class="field-note">Use the password linked to your account.</small>
+          </label>
+          <button class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Continue</span>
+            <strong>Sign in</strong>
+          </button>
+        </form>
+
+        <form id="signup-form" class="auth-form" hidden>
+          <label class="field">
+            <span>Name</span>
+            <input id="signup-name" name="name" type="text" placeholder="Your name" required />
+          </label>
+          <label class="field">
+            <span>Email</span>
+            <input id="signup-email" name="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label class="field">
+            <span>Password</span>
+            <div class="input-shell">
+              <input id="signup-password" name="password" type="password" placeholder="Minimum 8 characters" required />
+              <button class="field-toggle" type="button" data-password-toggle="signup-password">Show</button>
+            </div>
+            <small class="field-note">Use at least 8 characters.</small>
+          </label>
+          <button class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Start now</span>
+            <strong>Create account</strong>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <script src="/shared.js"></script>
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,7 @@
+.git
+.gitignore
+.env
+.m2
+target
+.data
+README.md
