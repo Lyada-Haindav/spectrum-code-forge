@@ -28,7 +28,10 @@ final class MongoStore implements AutoCloseable {
 
     static MongoStore connect(AppConfig config) {
         if (config.mongodbUri().isBlank()) {
-            throw new AppException(500, "MongoDB configuration is missing.");
+            throw new AppException(500, "MONGODB_URI is missing.");
+        }
+        if (looksLikePlaceholder(config.mongodbUri())) {
+            throw new AppException(500, "MONGODB_URI still contains a placeholder value.");
         }
 
         try {
@@ -41,7 +44,7 @@ final class MongoStore implements AutoCloseable {
             database.runCommand(new Document("ping", 1));
             return new MongoStore(client, database);
         } catch (Exception error) {
-            throw new AppException(500, "Unable to connect to MongoDB.");
+            throw new AppException(500, connectionFailureMessage(error));
         }
     }
 
@@ -94,5 +97,32 @@ final class MongoStore implements AutoCloseable {
     @Override
     public void close() {
         client.close();
+    }
+
+    private static String connectionFailureMessage(Exception error) {
+        String detail = sanitize(error.getMessage());
+        String base = "Unable to connect to MongoDB. Check MONGODB_URI, database credentials, and Atlas network access.";
+        if (detail.isBlank()) {
+            return base;
+        }
+        return base + " Cause: " + detail;
+    }
+
+    private static boolean looksLikePlaceholder(String uri) {
+        return uri.contains("YOUR_URL_ENCODED_PASSWORD") || uri.contains("<") || uri.contains(">");
+    }
+
+    private static String sanitize(String detail) {
+        if (detail == null || detail.isBlank()) {
+            return "";
+        }
+
+        String masked = detail
+            .replaceAll("(mongodb(?:\\+srv)?://[^:/\\s]+:)[^@\\s]+@", "$1****@")
+            .replace('\n', ' ')
+            .replace('\r', ' ')
+            .trim();
+
+        return masked.length() > 240 ? masked.substring(0, 240) + "..." : masked;
     }
 }

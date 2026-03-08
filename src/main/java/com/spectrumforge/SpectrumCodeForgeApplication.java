@@ -42,10 +42,16 @@ public final class SpectrumCodeForgeApplication {
         Runtime.getRuntime().addShutdownHook(new Thread(mongoStore::close));
     }
 
-    public static void main(String[] args) throws IOException {
-        AppConfig config = AppConfig.load();
-        SpectrumCodeForgeApplication app = new SpectrumCodeForgeApplication(config);
-        app.start();
+    public static void main(String[] args) {
+        try {
+            AppConfig config = AppConfig.load();
+            SpectrumCodeForgeApplication app = new SpectrumCodeForgeApplication(config);
+            app.start();
+        } catch (Exception error) {
+            System.err.println("Startup failed: " + error.getMessage());
+            error.printStackTrace(System.err);
+            System.exit(1);
+        }
     }
 
     private void start() throws IOException {
