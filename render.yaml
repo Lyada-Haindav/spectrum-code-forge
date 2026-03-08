@@ -4,9 +4,6 @@ services:
     runtime: docker
     plan: starter
     region: singapore
-    rootDir: Downloads/coder
-    dockerfilePath: Downloads/coder/Dockerfile
-    dockerContext: Downloads/coder
     autoDeployTrigger: commit
     healthCheckPath: /
     disk:
