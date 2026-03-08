@@ -38,6 +38,7 @@ const premiumDuration = document.querySelector("#premium-duration");
 const premiumUpiId = document.querySelector("#premium-upi-id");
 const premiumNote = document.querySelector("#premium-note");
 const premiumPayLink = document.querySelector("#premium-pay-link");
+const premiumAppLinks = document.querySelector("#premium-app-links");
 const premiumCopyUpi = document.querySelector("#premium-copy-upi");
 const premiumForm = document.querySelector("#premium-form");
 const premiumReferenceInput = document.querySelector("#premium-reference");
@@ -77,6 +78,13 @@ const DEMO_DATA = {
   additionalRequirements:
     "Use fast input handling and explain why prefix remainder counting works."
 };
+
+const UPI_APP_OPTIONS = [
+  { label: "Google Pay", packageName: "com.google.android.apps.nbu.paisa.user" },
+  { label: "PhonePe", packageName: "com.phonepe.app" },
+  { label: "Paytm", packageName: "net.one97.paytm" },
+  { label: "BHIM", packageName: "in.org.npci.upiapp" }
+];
 
 const state = {
   latestResult: null,
@@ -449,6 +457,7 @@ function renderBillingCheckout(checkout) {
     premiumUpiId.textContent = checkout.upiId || "-";
     premiumNote.textContent = "Premium checkout is unavailable right now.";
     premiumPayLink.href = "#";
+    renderPremiumAppLinks("");
     syncPremiumCheckoutControls(checkout);
     return;
   }
@@ -497,6 +506,7 @@ function renderBillingCheckout(checkout) {
       ? `Submitted UTR: ${pendingPayment.reference}. Wait for manual approval before premium unlocks.`
       : "Payment submitted. Wait for manual approval before premium unlocks.";
     premiumPayLink.href = "#";
+    renderPremiumAppLinks("");
     showPremiumMessage("Payment submitted. Premium will unlock after you manually approve this UTR.");
     syncPremiumCheckoutControls(checkout);
     return;
@@ -510,6 +520,7 @@ function renderBillingCheckout(checkout) {
     ? `Pay to ${checkout.upiName || "our UPI ID"}, then submit the UTR for manual approval: ${selectedPlan.note}`
     : "Use any UPI app to complete the payment, then submit the UTR for review.";
   premiumPayLink.href = selectedPlan.upiUrl || "#";
+  renderPremiumAppLinks(selectedPlan.upiUrl || "");
   syncPremiumCheckoutControls(checkout);
 }
 
@@ -633,6 +644,51 @@ function syncPremiumCheckoutControls(checkout = state.billingCheckout) {
     premiumPayLink.style.pointerEvents = locked ? "none" : "";
     premiumPayLink.style.opacity = locked ? "0.72" : "";
   }
+
+  if (premiumAppLinks) {
+    const links = premiumAppLinks.querySelectorAll("a");
+    for (const link of links) {
+      link.style.pointerEvents = locked ? "none" : "";
+      link.style.opacity = locked ? "0.52" : "";
+    }
+  }
+}
+
+function renderPremiumAppLinks(upiUrl) {
+  if (!premiumAppLinks) {
+    return;
+  }
+
+  if (!upiUrl) {
+    premiumAppLinks.innerHTML = '<p class="premium-app-note">Use Copy UPI ID if you want to pay from a different app.</p>';
+    return;
+  }
+
+  premiumAppLinks.innerHTML = UPI_APP_OPTIONS.map((app) => `
+    <a
+      class="premium-app-link"
+      href="${escapeHtml(buildUpiAppLink(upiUrl, app.packageName))}"
+      data-premium-app="${escapeHtml(app.label)}"
+    >${escapeHtml(app.label)}</a>
+  `).join("");
+}
+
+function buildUpiAppLink(upiUrl, packageName) {
+  if (!upiUrl) {
+    return "#";
+  }
+
+  const normalized = String(upiUrl).trim();
+  if (!isAndroidDevice()) {
+    return normalized;
+  }
+
+  const intentPayload = normalized.replace(/^upi:\/\//, "");
+  return `intent://${intentPayload}#Intent;scheme=upi;package=${packageName};end`;
+}
+
+function isAndroidDevice() {
+  return /Android/i.test(navigator.userAgent || "");
 }
 
 function showPremiumMessage(message) {

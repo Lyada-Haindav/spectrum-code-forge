@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Spectrum Code Forge Workspace</title>
+    <link rel="icon" type="image/svg+xml" href="/spectrum-code-forge-logo.svg" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body class="builder-page">
@@ -288,8 +289,13 @@
         </div>
 
         <div class="premium-actions">
-          <a id="premium-pay-link" class="primary-button home-link-button" href="#">Pay with UPI</a>
+          <a id="premium-pay-link" class="primary-button home-link-button" href="#">Open default UPI app</a>
           <button id="premium-copy-upi" class="ghost-button ghost-button-light" type="button">Copy UPI ID</button>
+        </div>
+
+        <div class="premium-app-picker">
+          <p class="section-kicker section-kicker-light">Choose UPI app</p>
+          <div id="premium-app-links" class="premium-app-links"></div>
         </div>
 
         <form id="premium-form" class="auth-form">
