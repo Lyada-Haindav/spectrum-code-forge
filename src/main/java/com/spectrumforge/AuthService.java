@@ -1,12 +1,10 @@
 package com.spectrumforge;
 
+import com.mongodb.ErrorCategory;
+import com.mongodb.MongoWriteException;
+import com.mongodb.client.MongoCollection;
 import com.sun.net.httpserver.Headers;
 import com.sun.net.httpserver.HttpExchange;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.GeneralSecurityException;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -14,16 +12,17 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import javax.crypto.SecretKeyFactory;
 import javax.crypto.spec.PBEKeySpec;
+import org.bson.Document;
+
+import static com.mongodb.client.model.Filters.eq;
 
 final class AuthService {
     private static final String SESSION_COOKIE = "solver_session";
@@ -33,21 +32,15 @@ final class AuthService {
     private static final int TOKEN_BYTES = 24;
     private static final int MIN_PASSWORD_LENGTH = 8;
     private static final long RESET_TOKEN_MINUTES = 30;
+    private static final long SESSION_TTL_DAYS = 30;
 
-    private final Path usersFile;
+    private final MongoCollection<Document> users;
+    private final MongoCollection<Document> sessions;
     private final SecureRandom secureRandom = new SecureRandom();
-    private final Map<String, StoredUser> usersById = new LinkedHashMap<>();
-    private final Map<String, String> userIdByEmail = new LinkedHashMap<>();
-    private final Map<String, SessionRecord> sessions = new ConcurrentHashMap<>();
 
-    AuthService(Path dataDir) {
-        this.usersFile = dataDir.resolve("users.json");
-        try {
-            Files.createDirectories(dataDir);
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to prepare authentication storage.");
-        }
-        loadUsers();
+    AuthService(MongoStore store) {
+        this.users = store.users();
+        this.sessions = store.sessions();
     }
 
     synchronized RegistrationResult register(String name, String email, String password, int freeDailyLimit) {
@@ -55,7 +48,7 @@ final class AuthService {
         String normalizedName = normalizeName(name, normalizedEmail);
         validatePassword(password);
 
-        if (userIdByEmail.containsKey(normalizedEmail)) {
+        if (findUserByEmail(normalizedEmail) != null) {
             throw new AppException(409, "An account already exists for this email.");
         }
 
@@ -82,51 +75,62 @@ final class AuthService {
             "",
             ""
         );
-        usersById.put(user.id(), user);
-        userIdByEmail.put(user.email(), user.id());
-        saveUsers();
+
+        try {
+            users.insertOne(toDocument(user));
+        } catch (MongoWriteException error) {
+            if (error.getError() != null && error.getError().getCategory() == ErrorCategory.DUPLICATE_KEY) {
+                throw new AppException(409, "An account already exists for this email.");
+            }
+            throw new AppException(500, "Unable to persist authentication data.");
+        }
+
         return new RegistrationResult(toAuthUser(user, freeDailyLimit), verificationToken);
     }
 
     synchronized AuthUser login(String email, String password, int freeDailyLimit) {
         String normalizedEmail = normalizeEmail(email);
-        String userId = userIdByEmail.get(normalizedEmail);
-        if (userId == null) {
-            throw new AppException(401, "Invalid email or password.");
-        }
-
-        StoredUser user = usersById.get(userId);
+        StoredUser user = findUserByEmail(normalizedEmail);
         if (user == null || !matches(password, user.passwordHash(), user.passwordSalt())) {
             throw new AppException(401, "Invalid email or password.");
         }
-
         return toAuthUser(normalizeUserState(user), freeDailyLimit);
     }
 
-    Optional<AuthUser> currentUser(HttpExchange exchange, int freeDailyLimit) {
+    synchronized Optional<AuthUser> currentUser(HttpExchange exchange, int freeDailyLimit) {
         String token = readCookie(exchange.getRequestHeaders(), SESSION_COOKIE);
         if (token.isBlank()) {
             return Optional.empty();
         }
 
-        SessionRecord session = sessions.get(token);
+        Document session = sessions.find(eq("_id", token)).first();
         if (session == null) {
             return Optional.empty();
         }
 
-        synchronized (this) {
-            StoredUser user = usersById.get(session.userId());
-            if (user == null) {
-                sessions.remove(token);
-                return Optional.empty();
-            }
-            return Optional.of(toAuthUser(normalizeUserState(user), freeDailyLimit));
+        Object expiresAtValue = session.get("expiresAt");
+        if (expiresAtValue instanceof java.util.Date expiresAt && !expiresAt.toInstant().isAfter(Instant.now())) {
+            sessions.deleteOne(eq("_id", token));
+            return Optional.empty();
         }
+
+        String userId = readString(session, "userId");
+        if (userId.isBlank()) {
+            sessions.deleteOne(eq("_id", token));
+            return Optional.empty();
+        }
+
+        StoredUser user = requireStoredUser(userId);
+        return Optional.of(toAuthUser(normalizeUserState(user), freeDailyLimit));
     }
 
     void startSession(HttpExchange exchange, AuthUser user) {
         String token = randomToken();
-        sessions.put(token, new SessionRecord(user.id(), Instant.now().toString()));
+        Document session = new Document("_id", token)
+            .append("userId", user.id())
+            .append("createdAt", Instant.now().toString())
+            .append("expiresAt", java.util.Date.from(Instant.now().plus(SESSION_TTL_DAYS, ChronoUnit.DAYS)));
+        sessions.insertOne(session);
         exchange.getResponseHeaders().add(
             "Set-Cookie",
             SESSION_COOKIE + "=" + token + "; Path=/; HttpOnly; SameSite=Lax"
@@ -136,7 +140,7 @@ final class AuthService {
     void endSession(HttpExchange exchange) {
         String token = readCookie(exchange.getRequestHeaders(), SESSION_COOKIE);
         if (!token.isBlank()) {
-            sessions.remove(token);
+            sessions.deleteOne(eq("_id", token));
         }
         exchange.getResponseHeaders().add(
             "Set-Cookie",
@@ -153,48 +157,43 @@ final class AuthService {
     }
 
     synchronized void ensureWithinDailyLimit(String userId, int freeDailyLimit) {
-        StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = normalizeUserState(user);
-        if (!normalized.premium() && normalized.dailyUsageCount() >= freeDailyLimit) {
+        StoredUser user = normalizeUserState(requireStoredUser(userId));
+        if (!user.premium() && user.dailyUsageCount() >= freeDailyLimit) {
             throw new AppException(403, dailyLimitExceededMessage(freeDailyLimit));
         }
     }
 
     synchronized AuthUser recordSuccessfulGenerate(String userId, int freeDailyLimit) {
-        StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = normalizeUserState(user);
-
-        if (normalized.premium()) {
-            return toAuthUser(normalized, freeDailyLimit);
+        StoredUser user = normalizeUserState(requireStoredUser(userId));
+        if (user.premium()) {
+            return toAuthUser(user, freeDailyLimit);
         }
-
-        if (normalized.dailyUsageCount() >= freeDailyLimit) {
+        if (user.dailyUsageCount() >= freeDailyLimit) {
             throw new AppException(403, dailyLimitExceededMessage(freeDailyLimit));
         }
 
         StoredUser updated = new StoredUser(
-            normalized.id(),
-            normalized.name(),
-            normalized.email(),
-            normalized.passwordHash(),
-            normalized.passwordSalt(),
-            normalized.createdAt(),
+            user.id(),
+            user.name(),
+            user.email(),
+            user.passwordHash(),
+            user.passwordSalt(),
+            user.createdAt(),
             todayString(),
-            normalized.dailyUsageCount() + 1,
+            user.dailyUsageCount() + 1,
             false,
             "",
             "",
             "",
-            normalized.premiumActivatedAt(),
-            normalized.emailVerified(),
-            normalized.verificationToken(),
-            normalized.verificationSentAt(),
-            normalized.emailVerifiedAt(),
-            normalized.resetToken(),
-            normalized.resetSentAt()
+            user.premiumActivatedAt(),
+            user.emailVerified(),
+            user.verificationToken(),
+            user.verificationSentAt(),
+            user.emailVerifiedAt(),
+            user.resetToken(),
+            user.resetSentAt()
         );
-        usersById.put(updated.id(), updated);
-        saveUsers();
+        saveUser(updated);
         return toAuthUser(updated, freeDailyLimit);
     }
 
@@ -205,146 +204,132 @@ final class AuthService {
         String premiumExpiresAt,
         int freeDailyLimit
     ) {
-        StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = normalizeUserState(user);
-        if (normalized.premium()) {
-            return toAuthUser(normalized, freeDailyLimit);
+        StoredUser user = normalizeUserState(requireStoredUser(userId));
+        if (user.premium()) {
+            return toAuthUser(user, freeDailyLimit);
         }
 
         StoredUser updated = new StoredUser(
-            normalized.id(),
-            normalized.name(),
-            normalized.email(),
-            normalized.passwordHash(),
-            normalized.passwordSalt(),
-            normalized.createdAt(),
-            normalized.usageDate(),
-            normalized.dailyUsageCount(),
+            user.id(),
+            user.name(),
+            user.email(),
+            user.passwordHash(),
+            user.passwordSalt(),
+            user.createdAt(),
+            user.usageDate(),
+            user.dailyUsageCount(),
             true,
             premiumPlanCode,
             premiumPlanLabel,
             premiumExpiresAt,
             Instant.now().toString(),
-            normalized.emailVerified(),
-            normalized.verificationToken(),
-            normalized.verificationSentAt(),
-            normalized.emailVerifiedAt(),
-            normalized.resetToken(),
-            normalized.resetSentAt()
+            user.emailVerified(),
+            user.verificationToken(),
+            user.verificationSentAt(),
+            user.emailVerifiedAt(),
+            user.resetToken(),
+            user.resetSentAt()
         );
-        usersById.put(updated.id(), updated);
-        saveUsers();
+        saveUser(updated);
         return toAuthUser(updated, freeDailyLimit);
     }
 
     synchronized AuthUser verifyEmail(String token, int freeDailyLimit) {
         String normalizedToken = normalizeVerificationToken(token);
-        StoredUser matchedUser = null;
-
-        for (StoredUser user : usersById.values()) {
-            if (!user.emailVerified() && normalizedToken.equals(user.verificationToken())) {
-                matchedUser = user;
-                break;
-            }
-        }
-
-        if (matchedUser == null) {
+        Document userDocument = users.find(new Document("verificationToken", normalizedToken).append("emailVerified", false)).first();
+        if (userDocument == null) {
             throw new AppException(400, "This verification link is invalid or expired.");
         }
 
+        StoredUser user = readUser(userDocument);
         StoredUser updated = new StoredUser(
-            matchedUser.id(),
-            matchedUser.name(),
-            matchedUser.email(),
-            matchedUser.passwordHash(),
-            matchedUser.passwordSalt(),
-            matchedUser.createdAt(),
-            matchedUser.usageDate(),
-            matchedUser.dailyUsageCount(),
-            matchedUser.premium(),
-            matchedUser.premiumPlanCode(),
-            matchedUser.premiumPlanLabel(),
-            matchedUser.premiumExpiresAt(),
-            matchedUser.premiumActivatedAt(),
+            user.id(),
+            user.name(),
+            user.email(),
+            user.passwordHash(),
+            user.passwordSalt(),
+            user.createdAt(),
+            user.usageDate(),
+            user.dailyUsageCount(),
+            user.premium(),
+            user.premiumPlanCode(),
+            user.premiumPlanLabel(),
+            user.premiumExpiresAt(),
+            user.premiumActivatedAt(),
             true,
             "",
-            matchedUser.verificationSentAt(),
+            user.verificationSentAt(),
             Instant.now().toString(),
-            matchedUser.resetToken(),
-            matchedUser.resetSentAt()
+            user.resetToken(),
+            user.resetSentAt()
         );
-        usersById.put(updated.id(), updated);
-        saveUsers();
+        saveUser(updated);
         return toAuthUser(updated, freeDailyLimit);
     }
 
     synchronized VerificationDispatch resendVerification(String userId, int freeDailyLimit) {
-        StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = normalizeUserState(user);
-        if (normalized.emailVerified()) {
+        StoredUser user = normalizeUserState(requireStoredUser(userId));
+        if (user.emailVerified()) {
             throw new AppException(409, "Email is already verified.");
         }
 
         String verificationToken = randomToken();
         StoredUser updated = new StoredUser(
-            normalized.id(),
-            normalized.name(),
-            normalized.email(),
-            normalized.passwordHash(),
-            normalized.passwordSalt(),
-            normalized.createdAt(),
-            normalized.usageDate(),
-            normalized.dailyUsageCount(),
-            normalized.premium(),
-            normalized.premiumPlanCode(),
-            normalized.premiumPlanLabel(),
-            normalized.premiumExpiresAt(),
-            normalized.premiumActivatedAt(),
+            user.id(),
+            user.name(),
+            user.email(),
+            user.passwordHash(),
+            user.passwordSalt(),
+            user.createdAt(),
+            user.usageDate(),
+            user.dailyUsageCount(),
+            user.premium(),
+            user.premiumPlanCode(),
+            user.premiumPlanLabel(),
+            user.premiumExpiresAt(),
+            user.premiumActivatedAt(),
             false,
             verificationToken,
             Instant.now().toString(),
-            normalized.emailVerifiedAt(),
-            normalized.resetToken(),
-            normalized.resetSentAt()
+            user.emailVerifiedAt(),
+            user.resetToken(),
+            user.resetSentAt()
         );
-        usersById.put(updated.id(), updated);
-        saveUsers();
+        saveUser(updated);
         return new VerificationDispatch(toAuthUser(updated, freeDailyLimit), verificationToken);
     }
 
     synchronized Optional<PasswordResetDispatch> requestPasswordReset(String email, int freeDailyLimit) {
         String normalizedEmail = normalizeEmail(email);
-        String userId = userIdByEmail.get(normalizedEmail);
-        if (userId == null) {
+        StoredUser user = findUserByEmail(normalizedEmail);
+        if (user == null) {
             return Optional.empty();
         }
 
-        StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = normalizeUserState(user);
+        user = normalizeUserState(user);
         String resetToken = randomToken();
         StoredUser updated = new StoredUser(
-            normalized.id(),
-            normalized.name(),
-            normalized.email(),
-            normalized.passwordHash(),
-            normalized.passwordSalt(),
-            normalized.createdAt(),
-            normalized.usageDate(),
-            normalized.dailyUsageCount(),
-            normalized.premium(),
-            normalized.premiumPlanCode(),
-            normalized.premiumPlanLabel(),
-            normalized.premiumExpiresAt(),
-            normalized.premiumActivatedAt(),
-            normalized.emailVerified(),
-            normalized.verificationToken(),
-            normalized.verificationSentAt(),
-            normalized.emailVerifiedAt(),
+            user.id(),
+            user.name(),
+            user.email(),
+            user.passwordHash(),
+            user.passwordSalt(),
+            user.createdAt(),
+            user.usageDate(),
+            user.dailyUsageCount(),
+            user.premium(),
+            user.premiumPlanCode(),
+            user.premiumPlanLabel(),
+            user.premiumExpiresAt(),
+            user.premiumActivatedAt(),
+            user.emailVerified(),
+            user.verificationToken(),
+            user.verificationSentAt(),
+            user.emailVerifiedAt(),
             resetToken,
             Instant.now().toString()
         );
-        usersById.put(updated.id(), updated);
-        saveUsers();
+        saveUser(updated);
         return Optional.of(new PasswordResetDispatch(toAuthUser(updated, freeDailyLimit), resetToken));
     }
 
@@ -352,145 +337,184 @@ final class AuthService {
         String normalizedToken = normalizeResetToken(token);
         validatePassword(password);
 
-        StoredUser matchedUser = null;
-        for (StoredUser user : usersById.values()) {
-            if (!user.resetToken().isBlank() && normalizedToken.equals(user.resetToken())) {
-                matchedUser = user;
-                break;
-            }
-        }
-
-        if (matchedUser == null || resetTokenExpired(matchedUser)) {
+        Document userDocument = users.find(eq("resetToken", normalizedToken)).first();
+        if (userDocument == null) {
             throw new AppException(400, "This reset link is invalid or expired.");
         }
 
-        StoredUser normalized = normalizeUserState(matchedUser);
+        StoredUser user = normalizeUserState(readUser(userDocument));
+        if (resetTokenExpired(user)) {
+            throw new AppException(400, "This reset link is invalid or expired.");
+        }
+
         PasswordHash hash = createPasswordHash(password);
         StoredUser updated = new StoredUser(
-            normalized.id(),
-            normalized.name(),
-            normalized.email(),
+            user.id(),
+            user.name(),
+            user.email(),
             hash.hash(),
             hash.salt(),
-            normalized.createdAt(),
-            normalized.usageDate(),
-            normalized.dailyUsageCount(),
-            normalized.premium(),
-            normalized.premiumPlanCode(),
-            normalized.premiumPlanLabel(),
-            normalized.premiumExpiresAt(),
-            normalized.premiumActivatedAt(),
-            normalized.emailVerified(),
-            normalized.verificationToken(),
-            normalized.verificationSentAt(),
-            normalized.emailVerifiedAt(),
+            user.createdAt(),
+            user.usageDate(),
+            user.dailyUsageCount(),
+            user.premium(),
+            user.premiumPlanCode(),
+            user.premiumPlanLabel(),
+            user.premiumExpiresAt(),
+            user.premiumActivatedAt(),
+            user.emailVerified(),
+            user.verificationToken(),
+            user.verificationSentAt(),
+            user.emailVerifiedAt(),
             "",
             ""
         );
-        usersById.put(updated.id(), updated);
+        saveUser(updated);
         clearSessionsForUser(updated.id());
-        saveUsers();
         return toAuthUser(updated, freeDailyLimit);
     }
 
-    private synchronized void loadUsers() {
-        usersById.clear();
-        userIdByEmail.clear();
-
-        if (!Files.exists(usersFile)) {
-            return;
-        }
-
-        try {
-            String json = Files.readString(usersFile, StandardCharsets.UTF_8);
-            if (json.isBlank()) {
-                return;
-            }
-
-            Map<String, Object> root = MiniJson.asObject(MiniJson.parse(json), "Invalid users store.");
-            for (Object entry : MiniJson.asList(root.get("users"))) {
-                if (!(entry instanceof Map<?, ?>)) {
-                    continue;
-                }
-
-                Map<String, Object> item = MiniJson.asObject(entry, "Invalid users store.");
-                StoredUser user = new StoredUser(
-                    readString(item, "id"),
-                    readString(item, "name"),
-                    normalizeEmail(readString(item, "email")),
-                    readString(item, "passwordHash"),
-                    readString(item, "passwordSalt"),
-                    readString(item, "createdAt"),
-                    readString(item, "usageDate"),
-                    readInt(item, "dailyUsageCount"),
-                    readBoolean(item, "premium"),
-                    readString(item, "premiumPlanCode"),
-                    readString(item, "premiumPlanLabel"),
-                    readString(item, "premiumExpiresAt"),
-                    readString(item, "premiumActivatedAt"),
-                    readBoolean(item, "emailVerified", true),
-                    readString(item, "verificationToken"),
-                    readString(item, "verificationSentAt"),
-                    readString(item, "emailVerifiedAt"),
-                    readString(item, "resetToken"),
-                    readString(item, "resetSentAt")
-                );
-
-                if (user.id().isBlank() || user.email().isBlank() || user.passwordHash().isBlank() || user.passwordSalt().isBlank()) {
-                    continue;
-                }
-
-                usersById.put(user.id(), user);
-                userIdByEmail.put(user.email(), user.id());
-            }
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to read authentication data.");
-        }
+    private StoredUser findUserByEmail(String email) {
+        Document document = users.find(eq("email", email)).first();
+        return document == null ? null : readUser(document);
     }
 
-    private synchronized void saveUsers() {
-        List<Object> users = new ArrayList<>();
-        for (StoredUser user : usersById.values()) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", user.id());
-            item.put("name", user.name());
-            item.put("email", user.email());
-            item.put("passwordHash", user.passwordHash());
-            item.put("passwordSalt", user.passwordSalt());
-            item.put("createdAt", user.createdAt());
-            item.put("usageDate", user.usageDate());
-            item.put("dailyUsageCount", user.dailyUsageCount());
-            item.put("premium", user.premium());
-            item.put("premiumPlanCode", user.premiumPlanCode());
-            item.put("premiumPlanLabel", user.premiumPlanLabel());
-            item.put("premiumExpiresAt", user.premiumExpiresAt());
-            item.put("premiumActivatedAt", user.premiumActivatedAt());
-            item.put("emailVerified", user.emailVerified());
-            item.put("verificationToken", user.verificationToken());
-            item.put("verificationSentAt", user.verificationSentAt());
-            item.put("emailVerifiedAt", user.emailVerifiedAt());
-            item.put("resetToken", user.resetToken());
-            item.put("resetSentAt", user.resetSentAt());
-            users.add(item);
+    private StoredUser requireStoredUser(String userId) {
+        Document document = users.find(eq("_id", userId)).first();
+        if (document == null) {
+            throw new AppException(404, "Account not found.");
         }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("users", users);
-        writeAtomically(usersFile, MiniJson.stringify(payload));
+        return readUser(document);
     }
 
-    private void writeAtomically(Path target, String content) {
-        try {
-            Path tempFile = target.resolveSibling(target.getFileName() + ".tmp");
-            Files.writeString(tempFile, content, StandardCharsets.UTF_8);
-            try {
-                Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException ignored) {
-                Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to persist authentication data.");
+    private void saveUser(StoredUser user) {
+        users.replaceOne(eq("_id", user.id()), toDocument(user), new com.mongodb.client.model.ReplaceOptions().upsert(true));
+    }
+
+    private Document toDocument(StoredUser user) {
+        return new Document("_id", user.id())
+            .append("name", user.name())
+            .append("email", user.email())
+            .append("passwordHash", user.passwordHash())
+            .append("passwordSalt", user.passwordSalt())
+            .append("createdAt", user.createdAt())
+            .append("usageDate", user.usageDate())
+            .append("dailyUsageCount", user.dailyUsageCount())
+            .append("premium", user.premium())
+            .append("premiumPlanCode", user.premiumPlanCode())
+            .append("premiumPlanLabel", user.premiumPlanLabel())
+            .append("premiumExpiresAt", user.premiumExpiresAt())
+            .append("premiumActivatedAt", user.premiumActivatedAt())
+            .append("emailVerified", user.emailVerified())
+            .append("verificationToken", user.verificationToken())
+            .append("verificationSentAt", user.verificationSentAt())
+            .append("emailVerifiedAt", user.emailVerifiedAt())
+            .append("resetToken", user.resetToken())
+            .append("resetSentAt", user.resetSentAt());
+    }
+
+    private StoredUser readUser(Document document) {
+        return new StoredUser(
+            readString(document, "_id"),
+            readString(document, "name"),
+            normalizeEmail(readString(document, "email")),
+            readString(document, "passwordHash"),
+            readString(document, "passwordSalt"),
+            readString(document, "createdAt"),
+            readString(document, "usageDate"),
+            readInt(document, "dailyUsageCount"),
+            readBoolean(document, "premium"),
+            readString(document, "premiumPlanCode"),
+            readString(document, "premiumPlanLabel"),
+            readString(document, "premiumExpiresAt"),
+            readString(document, "premiumActivatedAt"),
+            readBoolean(document, "emailVerified", true),
+            readString(document, "verificationToken"),
+            readString(document, "verificationSentAt"),
+            readString(document, "emailVerifiedAt"),
+            readString(document, "resetToken"),
+            readString(document, "resetSentAt")
+        );
+    }
+
+    private StoredUser normalizeUserState(StoredUser user) {
+        StoredUser normalized = user;
+        boolean changed = false;
+
+        if (subscriptionExpired(normalized)) {
+            normalized = new StoredUser(
+                normalized.id(),
+                normalized.name(),
+                normalized.email(),
+                normalized.passwordHash(),
+                normalized.passwordSalt(),
+                normalized.createdAt(),
+                normalized.usageDate(),
+                normalized.dailyUsageCount(),
+                false,
+                "",
+                "",
+                "",
+                "",
+                normalized.emailVerified(),
+                normalized.verificationToken(),
+                normalized.verificationSentAt(),
+                normalized.emailVerifiedAt(),
+                normalized.resetToken(),
+                normalized.resetSentAt()
+            );
+            changed = true;
         }
+
+        String today = todayString();
+        if (!today.equals(normalized.usageDate())) {
+            normalized = new StoredUser(
+                normalized.id(),
+                normalized.name(),
+                normalized.email(),
+                normalized.passwordHash(),
+                normalized.passwordSalt(),
+                normalized.createdAt(),
+                today,
+                0,
+                normalized.premium(),
+                normalized.premiumPlanCode(),
+                normalized.premiumPlanLabel(),
+                normalized.premiumExpiresAt(),
+                normalized.premiumActivatedAt(),
+                normalized.emailVerified(),
+                normalized.verificationToken(),
+                normalized.verificationSentAt(),
+                normalized.emailVerifiedAt(),
+                normalized.resetToken(),
+                normalized.resetSentAt()
+            );
+            changed = true;
+        }
+
+        if (changed) {
+            saveUser(normalized);
+        }
+        return normalized;
+    }
+
+    private AuthUser toAuthUser(StoredUser user, int freeDailyLimit) {
+        int used = user.premium() ? 0 : Math.max(0, user.dailyUsageCount());
+        int remaining = user.premium() ? -1 : Math.max(0, freeDailyLimit - used);
+        return new AuthUser(
+            user.id(),
+            user.name(),
+            user.email(),
+            user.emailVerified(),
+            user.premium(),
+            user.premiumPlanCode(),
+            user.premiumPlanLabel(),
+            user.premiumExpiresAt(),
+            freeDailyLimit,
+            used,
+            remaining,
+            user.emailVerified() && (user.premium() || remaining > 0)
+        );
     }
 
     private String normalizeEmail(String email) {
@@ -573,12 +597,12 @@ final class AuthService {
         return "";
     }
 
-    private String readString(Map<String, Object> payload, String key) {
+    private String readString(Document payload, String key) {
         Object value = payload.get(key);
         return value == null ? "" : String.valueOf(value).trim();
     }
 
-    private boolean readBoolean(Map<String, Object> payload, String key) {
+    private boolean readBoolean(Document payload, String key) {
         Object value = payload.get(key);
         if (value instanceof Boolean bool) {
             return bool;
@@ -586,14 +610,14 @@ final class AuthService {
         return value != null && "true".equalsIgnoreCase(String.valueOf(value).trim());
     }
 
-    private boolean readBoolean(Map<String, Object> payload, String key, boolean fallback) {
+    private boolean readBoolean(Document payload, String key, boolean fallback) {
         if (!payload.containsKey(key)) {
             return fallback;
         }
         return readBoolean(payload, key);
     }
 
-    private int readInt(Map<String, Object> payload, String key) {
+    private int readInt(Document payload, String key) {
         Object value = payload.get(key);
         if (value instanceof Number number) {
             return number.intValue();
@@ -606,95 +630,6 @@ final class AuthService {
         } catch (NumberFormatException ignored) {
             return 0;
         }
-    }
-
-    private StoredUser requireStoredUser(String userId) {
-        StoredUser user = usersById.get(userId);
-        if (user == null) {
-            throw new AppException(404, "Account not found.");
-        }
-        return user;
-    }
-
-    private StoredUser normalizeUserState(StoredUser user) {
-        StoredUser normalized = user;
-        boolean changed = false;
-
-        if (subscriptionExpired(normalized)) {
-            normalized = new StoredUser(
-                normalized.id(),
-                normalized.name(),
-                normalized.email(),
-                normalized.passwordHash(),
-                normalized.passwordSalt(),
-                normalized.createdAt(),
-                normalized.usageDate(),
-                normalized.dailyUsageCount(),
-                false,
-                "",
-                "",
-                "",
-                "",
-                normalized.emailVerified(),
-                normalized.verificationToken(),
-                normalized.verificationSentAt(),
-                normalized.emailVerifiedAt(),
-                normalized.resetToken(),
-                normalized.resetSentAt()
-            );
-            changed = true;
-        }
-
-        String today = todayString();
-        if (!today.equals(normalized.usageDate())) {
-            normalized = new StoredUser(
-                normalized.id(),
-                normalized.name(),
-                normalized.email(),
-                normalized.passwordHash(),
-                normalized.passwordSalt(),
-                normalized.createdAt(),
-                today,
-                0,
-                normalized.premium(),
-                normalized.premiumPlanCode(),
-                normalized.premiumPlanLabel(),
-                normalized.premiumExpiresAt(),
-                normalized.premiumActivatedAt(),
-                normalized.emailVerified(),
-                normalized.verificationToken(),
-                normalized.verificationSentAt(),
-                normalized.emailVerifiedAt(),
-                normalized.resetToken(),
-                normalized.resetSentAt()
-            );
-            changed = true;
-        }
-
-        if (changed) {
-            usersById.put(normalized.id(), normalized);
-            saveUsers();
-        }
-        return normalized;
-    }
-
-    private AuthUser toAuthUser(StoredUser user, int freeDailyLimit) {
-        int used = user.premium() ? 0 : Math.max(0, user.dailyUsageCount());
-        int remaining = user.premium() ? -1 : Math.max(0, freeDailyLimit - used);
-        return new AuthUser(
-            user.id(),
-            user.name(),
-            user.email(),
-            user.emailVerified(),
-            user.premium(),
-            user.premiumPlanCode(),
-            user.premiumPlanLabel(),
-            user.premiumExpiresAt(),
-            freeDailyLimit,
-            used,
-            remaining,
-            user.emailVerified() && (user.premium() || remaining > 0)
-        );
     }
 
     private boolean subscriptionExpired(StoredUser user) {
@@ -740,7 +675,7 @@ final class AuthService {
     }
 
     private void clearSessionsForUser(String userId) {
-        sessions.entrySet().removeIf((entry) -> userId.equals(entry.getValue().userId()));
+        sessions.deleteMany(eq("userId", userId));
     }
 
     private String todayString() {
@@ -752,9 +687,6 @@ final class AuthService {
     }
 
     private record PasswordHash(String hash, String salt) {
-    }
-
-    private record SessionRecord(String userId, String createdAt) {
     }
 
     record RegistrationResult(AuthUser user, String verificationToken) {

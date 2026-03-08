@@ -25,6 +25,7 @@ public final class SpectrumCodeForgeApplication {
 
     private final AppConfig config;
     private final GeminiClient client;
+    private final MongoStore mongoStore;
     private final AuthService authService;
     private final HistoryService historyService;
     private final BillingService billingService;
@@ -33,11 +34,12 @@ public final class SpectrumCodeForgeApplication {
     private SpectrumCodeForgeApplication(AppConfig config) {
         this.config = config;
         this.client = new GeminiClient();
-        java.nio.file.Path dataDir = java.nio.file.Path.of(config.dataDir());
-        this.authService = new AuthService(dataDir);
-        this.historyService = new HistoryService(dataDir);
-        this.billingService = new BillingService(dataDir);
+        this.mongoStore = MongoStore.connect(config);
+        this.authService = new AuthService(mongoStore);
+        this.historyService = new HistoryService(mongoStore);
+        this.billingService = new BillingService(mongoStore);
         this.emailService = new EmailService();
+        Runtime.getRuntime().addShutdownHook(new Thread(mongoStore::close));
     }
 
     public static void main(String[] args) throws IOException {

@@ -10,7 +10,6 @@ FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 ENV PORT=10000
-ENV DATA_DIR=/var/data/spectrum-code-forge
 
 COPY --from=build /app/target/classes ./target/classes
 

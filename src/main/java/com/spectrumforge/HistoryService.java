@@ -1,191 +1,105 @@
 package com.spectrumforge;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import com.mongodb.client.MongoCollection;
+import com.mongodb.client.model.Sorts;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.bson.Document;
+
+import static com.mongodb.client.model.Filters.eq;
 
 final class HistoryService {
     private static final int MAX_ENTRIES_PER_USER = 30;
 
-    private final Path historyFile;
-    private final List<StoredHistory> entries = new ArrayList<>();
+    private final MongoCollection<Document> collection;
+    private final MongoStore store;
 
-    HistoryService(Path dataDir) {
-        this.historyFile = dataDir.resolve("history.json");
-        try {
-            Files.createDirectories(dataDir);
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to prepare history storage.");
-        }
-        loadHistory();
+    HistoryService(MongoStore store) {
+        this.store = store;
+        this.collection = store.history();
     }
 
     synchronized HistorySnapshot save(AuthUser user, GenerateRequest request, Map<String, Object> result) {
         String id = UUID.randomUUID().toString();
         String createdAt = Instant.now().toString();
-        Map<String, Object> requestCopy = asJsonMap(request.toMap());
         Map<String, Object> resultCopy = asJsonMap(result);
         resultCopy.remove("historyId");
         resultCopy.remove("savedAt");
 
-        entries.add(new StoredHistory(id, user.id(), createdAt, false, requestCopy, resultCopy));
+        Document entry = new Document("_id", id)
+            .append("userId", user.id())
+            .append("createdAt", createdAt)
+            .append("pinned", false)
+            .append("request", store.toDocument(request.toMap()))
+            .append("result", store.toDocument(resultCopy));
+        collection.insertOne(entry);
         pruneUserHistory(user.id());
-        saveHistory();
         return new HistorySnapshot(id, createdAt);
     }
 
     synchronized List<Object> listForUser(String userId) {
         List<Object> items = new ArrayList<>();
-        userEntries(userId).stream()
-            .sorted(historyComparator())
-            .forEach(entry -> items.add(toSummary(entry)));
+        for (Document entry : collection.find(eq("userId", userId))
+            .sort(Sorts.orderBy(Sorts.descending("pinned"), Sorts.descending("createdAt")))) {
+            items.add(toSummary(entry));
+        }
         return items;
     }
 
     synchronized Map<String, Object> getForUser(String userId, String id) {
-        StoredHistory entry = entries.stream()
-            .filter(item -> item.userId().equals(userId) && item.id().equals(id))
-            .findFirst()
-            .orElseThrow(() -> new AppException(404, "Saved chat not found."));
-
+        Document entry = findUserEntry(userId, id);
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("id", entry.id());
-        payload.put("createdAt", entry.createdAt());
-        payload.put("pinned", entry.pinned());
-        payload.put("request", asJsonMap(entry.request()));
-        payload.put("result", asJsonMap(entry.result()));
+        payload.put("id", entry.getString("_id"));
+        payload.put("createdAt", entry.getString("createdAt"));
+        payload.put("pinned", readBoolean(entry, "pinned"));
+        payload.put("request", store.toMap(entry.get("request", Document.class)));
+        payload.put("result", store.toMap(entry.get("result", Document.class)));
         return payload;
     }
 
     synchronized Map<String, Object> pinForUser(String userId, String id, boolean pinned) {
-        StoredHistory entry = findUserEntry(userId, id);
-        entries.remove(entry);
-        StoredHistory updated = new StoredHistory(entry.id(), entry.userId(), entry.createdAt(), pinned, entry.request(), entry.result());
-        entries.add(updated);
-        saveHistory();
-        return toSummary(updated);
+        Document entry = findUserEntry(userId, id);
+        collection.updateOne(eq("_id", id), new Document("$set", new Document("pinned", pinned)));
+        entry.put("pinned", pinned);
+        return toSummary(entry);
     }
 
     synchronized void deleteForUser(String userId, String id) {
-        StoredHistory entry = findUserEntry(userId, id);
-        entries.remove(entry);
-        saveHistory();
-    }
-
-    private synchronized void loadHistory() {
-        entries.clear();
-        if (!Files.exists(historyFile)) {
-            return;
-        }
-
-        try {
-            String json = Files.readString(historyFile, StandardCharsets.UTF_8);
-            if (json.isBlank()) {
-                return;
-            }
-
-            Map<String, Object> root = MiniJson.asObject(MiniJson.parse(json), "Invalid history store.");
-            for (Object entry : MiniJson.asList(root.get("entries"))) {
-                if (!(entry instanceof Map<?, ?>)) {
-                    continue;
-                }
-
-                Map<String, Object> item = MiniJson.asObject(entry, "Invalid history store.");
-                String id = readString(item, "id");
-                String userId = readString(item, "userId");
-                String createdAt = readString(item, "createdAt");
-                Object request = item.get("request");
-                Object result = item.get("result");
-
-                if (id.isBlank() || userId.isBlank() || createdAt.isBlank() || !(request instanceof Map<?, ?>) || !(result instanceof Map<?, ?>)) {
-                    continue;
-                }
-
-                entries.add(new StoredHistory(
-                    id,
-                    userId,
-                    createdAt,
-                    readBoolean(item, "pinned"),
-                    MiniJson.asObject(request, "Invalid history request."),
-                    MiniJson.asObject(result, "Invalid history result.")
-                ));
-            }
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to read saved history.");
-        }
-    }
-
-    private synchronized void saveHistory() {
-        List<Object> serializedEntries = new ArrayList<>();
-        for (StoredHistory entry : entries) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", entry.id());
-            item.put("userId", entry.userId());
-            item.put("createdAt", entry.createdAt());
-            item.put("pinned", entry.pinned());
-            item.put("request", entry.request());
-            item.put("result", entry.result());
-            serializedEntries.add(item);
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("entries", serializedEntries);
-        writeAtomically(historyFile, MiniJson.stringify(payload));
-    }
-
-    private void writeAtomically(Path target, String content) {
-        try {
-            Path tempFile = target.resolveSibling(target.getFileName() + ".tmp");
-            Files.writeString(tempFile, content, StandardCharsets.UTF_8);
-            try {
-                Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException ignored) {
-                Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to persist saved history.");
-        }
+        Document entry = findUserEntry(userId, id);
+        collection.deleteOne(eq("_id", entry.getString("_id")));
     }
 
     private void pruneUserHistory(String userId) {
-        List<StoredHistory> userEntries = userEntries(userId).stream()
-            .sorted(historyComparator())
-            .toList();
-
-        if (userEntries.size() <= MAX_ENTRIES_PER_USER) {
-            return;
+        List<String> extraIds = new ArrayList<>();
+        int index = 0;
+        for (Document entry : collection.find(eq("userId", userId))
+            .sort(Sorts.orderBy(Sorts.descending("pinned"), Sorts.descending("createdAt")))) {
+            if (index >= MAX_ENTRIES_PER_USER) {
+                extraIds.add(entry.getString("_id"));
+            }
+            index++;
         }
 
-        for (int index = MAX_ENTRIES_PER_USER; index < userEntries.size(); index++) {
-            entries.remove(userEntries.get(index));
+        for (String extraId : extraIds) {
+            collection.deleteOne(eq("_id", extraId));
         }
     }
 
-    private List<StoredHistory> userEntries(String userId) {
-        return entries.stream()
-            .filter(entry -> entry.userId().equals(userId))
-            .toList();
+    private Document findUserEntry(String userId, String id) {
+        Document entry = collection.find(new Document("_id", id).append("userId", userId)).first();
+        if (entry == null) {
+            throw new AppException(404, "Saved chat not found.");
+        }
+        return entry;
     }
 
-    private StoredHistory findUserEntry(String userId, String id) {
-        return entries.stream()
-            .filter(item -> item.userId().equals(userId) && item.id().equals(id))
-            .findFirst()
-            .orElseThrow(() -> new AppException(404, "Saved chat not found."));
-    }
-
-    private Map<String, Object> toSummary(StoredHistory entry) {
-        Map<String, Object> request = entry.request();
-        Map<String, Object> result = entry.result();
+    private Map<String, Object> toSummary(Document entry) {
+        Map<String, Object> request = store.toMap(entry.get("request", Document.class));
+        Map<String, Object> result = store.toMap(entry.get("result", Document.class));
 
         String title = readString(result, "title");
         if (title.isBlank()) {
@@ -193,12 +107,12 @@ final class HistoryService {
         }
 
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("id", entry.id());
+        summary.put("id", entry.getString("_id"));
         summary.put("title", title);
         summary.put("preview", truncate(readString(request, "problemStatement"), 160));
         summary.put("language", readString(request, "primaryLanguage"));
-        summary.put("createdAt", entry.createdAt());
-        summary.put("pinned", entry.pinned());
+        summary.put("createdAt", entry.getString("createdAt"));
+        summary.put("pinned", readBoolean(entry, "pinned"));
         return summary;
     }
 
@@ -212,17 +126,12 @@ final class HistoryService {
         return value == null ? "" : String.valueOf(value).trim();
     }
 
-    private boolean readBoolean(Map<String, Object> payload, String key) {
+    private boolean readBoolean(Document payload, String key) {
         Object value = payload.get(key);
         if (value instanceof Boolean bool) {
             return bool;
         }
         return value != null && "true".equalsIgnoreCase(String.valueOf(value).trim());
-    }
-
-    private Comparator<StoredHistory> historyComparator() {
-        return Comparator.comparing(StoredHistory::pinned).reversed()
-            .thenComparing(StoredHistory::createdAt, Comparator.reverseOrder());
     }
 
     private String truncate(String value, int maxLength) {
@@ -237,15 +146,5 @@ final class HistoryService {
     }
 
     record HistorySnapshot(String id, String createdAt) {
-    }
-
-    private record StoredHistory(
-        String id,
-        String userId,
-        String createdAt,
-        boolean pinned,
-        Map<String, Object> request,
-        Map<String, Object> result
-    ) {
     }
 }

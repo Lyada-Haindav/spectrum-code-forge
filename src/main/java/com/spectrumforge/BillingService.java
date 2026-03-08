@@ -1,30 +1,25 @@
 package com.spectrumforge;
 
-import java.io.IOException;
+import com.mongodb.ErrorCategory;
+import com.mongodb.MongoWriteException;
+import com.mongodb.client.MongoCollection;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.bson.Document;
+
+import static com.mongodb.client.model.Filters.eq;
 
 final class BillingService {
-    private final Path paymentsFile;
-    private final List<StoredPayment> payments = new ArrayList<>();
+    private final MongoCollection<Document> payments;
 
-    BillingService(Path dataDir) {
-        this.paymentsFile = dataDir.resolve("payments.json");
-        try {
-            Files.createDirectories(dataDir);
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to prepare premium billing storage.");
-        }
-        loadPayments();
+    BillingService(MongoStore store) {
+        this.payments = store.payments();
     }
 
     synchronized Map<String, Object> checkoutFor(AuthUser user, AppConfig config) {
@@ -61,12 +56,6 @@ final class BillingService {
 
         PremiumPlan plan = config.premiumPlan(planCode);
         String normalizedReference = normalizeReference(transactionReference);
-        boolean exists = payments.stream()
-            .anyMatch(payment -> payment.transactionReference().equalsIgnoreCase(normalizedReference));
-        if (exists) {
-            throw new AppException(409, "This payment reference is already linked to another premium account.");
-        }
-
         Instant activatedAt = Instant.now();
         String expiresAt = plan.expiresAtFrom(activatedAt).toString();
         AuthUser upgradedUser = authService.activatePremium(
@@ -76,31 +65,37 @@ final class BillingService {
             expiresAt,
             config.freeDailyLimit()
         );
-        StoredPayment payment = new StoredPayment(
-            UUID.randomUUID().toString(),
-            user.id(),
-            activatedAt.toString(),
-            normalizedReference,
-            plan.code(),
-            plan.label(),
-            plan.priceInr(),
-            config.premiumUpiId(),
-            expiresAt,
-            "completed"
-        );
-        payments.add(payment);
-        savePayments();
+
+        Document payment = new Document("_id", UUID.randomUUID().toString())
+            .append("userId", user.id())
+            .append("createdAt", activatedAt.toString())
+            .append("transactionReference", normalizedReference)
+            .append("planCode", plan.code())
+            .append("planLabel", plan.label())
+            .append("amountInr", plan.priceInr())
+            .append("upiId", config.premiumUpiId())
+            .append("expiresAt", expiresAt)
+            .append("status", "completed");
+
+        try {
+            payments.insertOne(payment);
+        } catch (MongoWriteException error) {
+            if (error.getError() != null && error.getError().getCategory() == ErrorCategory.DUPLICATE_KEY) {
+                throw new AppException(409, "This payment reference is already linked to another premium account.");
+            }
+            throw new AppException(500, "Unable to persist premium billing data.");
+        }
 
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("user", upgradedUser.toMap());
         payload.put("payment", Map.of(
-            "id", payment.id(),
-            "reference", payment.transactionReference(),
-            "planCode", payment.planCode(),
-            "planLabel", payment.planLabel(),
-            "amountInr", payment.amountInr(),
-            "expiresAt", payment.expiresAt(),
-            "createdAt", payment.createdAt()
+            "id", payment.getString("_id"),
+            "reference", payment.getString("transactionReference"),
+            "planCode", payment.getString("planCode"),
+            "planLabel", payment.getString("planLabel"),
+            "amountInr", payment.getInteger("amountInr", 0),
+            "expiresAt", payment.getString("expiresAt"),
+            "createdAt", payment.getString("createdAt")
         ));
         return payload;
     }
@@ -141,127 +136,5 @@ final class BillingService {
             throw new AppException(400, "Enter a valid UPI transaction reference or UTR.");
         }
         return value;
-    }
-
-    private synchronized void loadPayments() {
-        payments.clear();
-        if (!Files.exists(paymentsFile)) {
-            return;
-        }
-
-        try {
-            String json = Files.readString(paymentsFile, StandardCharsets.UTF_8);
-            if (json.isBlank()) {
-                return;
-            }
-
-            Map<String, Object> root = MiniJson.asObject(MiniJson.parse(json), "Invalid payments store.");
-            for (Object entry : MiniJson.asList(root.get("payments"))) {
-                if (!(entry instanceof Map<?, ?>)) {
-                    continue;
-                }
-
-                Map<String, Object> item = MiniJson.asObject(entry, "Invalid payments store.");
-                String id = readString(item, "id");
-                String userId = readString(item, "userId");
-                String createdAt = readString(item, "createdAt");
-                String transactionReference = readString(item, "transactionReference");
-                String planCode = readString(item, "planCode");
-                String planLabel = readString(item, "planLabel");
-                String upiId = readString(item, "upiId");
-                String expiresAt = readString(item, "expiresAt");
-                String status = readString(item, "status");
-                int amountInr = readInt(item, "amountInr");
-
-                if (id.isBlank() || userId.isBlank() || transactionReference.isBlank() || createdAt.isBlank()) {
-                    continue;
-                }
-
-                payments.add(new StoredPayment(
-                    id,
-                    userId,
-                    createdAt,
-                    transactionReference,
-                    planCode,
-                    planLabel,
-                    amountInr,
-                    upiId,
-                    expiresAt,
-                    status
-                ));
-            }
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to read premium billing data.");
-        }
-    }
-
-    private synchronized void savePayments() {
-        List<Object> serializedPayments = new ArrayList<>();
-        for (StoredPayment payment : payments) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("id", payment.id());
-            item.put("userId", payment.userId());
-            item.put("createdAt", payment.createdAt());
-            item.put("transactionReference", payment.transactionReference());
-            item.put("planCode", payment.planCode());
-            item.put("planLabel", payment.planLabel());
-            item.put("amountInr", payment.amountInr());
-            item.put("upiId", payment.upiId());
-            item.put("expiresAt", payment.expiresAt());
-            item.put("status", payment.status());
-            serializedPayments.add(item);
-        }
-
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("payments", serializedPayments);
-        writeAtomically(paymentsFile, MiniJson.stringify(payload));
-    }
-
-    private void writeAtomically(Path target, String content) {
-        try {
-            Path tempFile = target.resolveSibling(target.getFileName() + ".tmp");
-            Files.writeString(tempFile, content, StandardCharsets.UTF_8);
-            try {
-                Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-            } catch (IOException ignored) {
-                Files.move(tempFile, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException error) {
-            throw new AppException(500, "Unable to persist premium billing data.");
-        }
-    }
-
-    private String readString(Map<String, Object> payload, String key) {
-        Object value = payload.get(key);
-        return value == null ? "" : String.valueOf(value).trim();
-    }
-
-    private int readInt(Map<String, Object> payload, String key) {
-        Object value = payload.get(key);
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value == null) {
-            return 0;
-        }
-        try {
-            return Integer.parseInt(String.valueOf(value).trim());
-        } catch (NumberFormatException ignored) {
-            return 0;
-        }
-    }
-
-    private record StoredPayment(
-        String id,
-        String userId,
-        String createdAt,
-        String transactionReference,
-        String planCode,
-        String planLabel,
-        int amountInr,
-        String upiId,
-        String expiresAt,
-        String status
-    ) {
     }
 }

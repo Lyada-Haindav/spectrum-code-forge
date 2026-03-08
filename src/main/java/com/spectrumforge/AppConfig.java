@@ -1,5 +1,6 @@
 package com.spectrumforge;
 
+import com.mongodb.ConnectionString;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,7 +15,8 @@ record AppConfig(
     String baseUrl,
     String model,
     int port,
-    String dataDir,
+    String mongodbUri,
+    String mongodbDatabase,
     int freeDailyLimit,
     String premiumUpiId,
     String premiumUpiName,
@@ -42,21 +44,17 @@ record AppConfig(
             model = "gemini-2.5-flash-lite";
         }
 
-        String portValue = value("PORT", fileEnv);
-        int port = 3000;
-        if (!portValue.isBlank()) {
-            try {
-                port = Integer.parseInt(portValue.trim());
-            } catch (NumberFormatException ignored) {
-                port = 3000;
-            }
+        int port = parseInt(value("PORT", fileEnv), 3000);
+        String mongodbUri = value("MONGODB_URI", fileEnv);
+        String mongodbDatabase = value("MONGODB_DATABASE", fileEnv);
+        if (mongodbDatabase.isBlank()) {
+            mongodbDatabase = databaseFromUri(mongodbUri);
+        }
+        if (mongodbDatabase.isBlank()) {
+            mongodbDatabase = "spectrum_code_forge";
         }
 
         int freeDailyLimit = parseInt(value("FREE_DAILY_LIMIT", fileEnv), 6);
-        String dataDir = value("DATA_DIR", fileEnv);
-        if (dataDir.isBlank()) {
-            dataDir = ".data";
-        }
         String premiumUpiId = value("PREMIUM_UPI_ID", fileEnv);
         String premiumUpiName = value("PREMIUM_UPI_NAME", fileEnv);
         if (premiumUpiName.isBlank()) {
@@ -84,7 +82,8 @@ record AppConfig(
             baseUrl,
             model,
             port,
-            dataDir,
+            mongodbUri,
+            mongodbDatabase,
             freeDailyLimit,
             premiumUpiId,
             premiumUpiName,
@@ -97,11 +96,11 @@ record AppConfig(
     }
 
     boolean configured() {
-        return !apiKey.isBlank();
+        return !apiKey.isBlank() && !mongodbUri.isBlank();
     }
 
     boolean premiumCheckoutEnabled() {
-        return !premiumUpiId.isBlank() && enabledPremiumPlans().stream().findFirst().isPresent();
+        return !premiumUpiId.isBlank() && !enabledPremiumPlans().isEmpty();
     }
 
     boolean emailDeliveryEnabled() {
@@ -146,6 +145,18 @@ record AppConfig(
             return Integer.parseInt(rawValue.trim());
         } catch (NumberFormatException ignored) {
             return fallback;
+        }
+    }
+
+    private static String databaseFromUri(String uri) {
+        if (uri == null || uri.isBlank()) {
+            return "";
+        }
+        try {
+            String database = new ConnectionString(uri).getDatabase();
+            return database == null ? "" : database.trim();
+        } catch (Exception ignored) {
+            return "";
         }
     }
 
