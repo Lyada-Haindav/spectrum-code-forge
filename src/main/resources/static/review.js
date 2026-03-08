@@ -8,9 +8,11 @@ const reviewMessage = document.querySelector("#review-message");
 const reviewCount = document.querySelector("#review-count");
 const reviewEmpty = document.querySelector("#review-empty");
 const reviewList = document.querySelector("#review-list");
+const reviewSearch = document.querySelector("#review-search");
 
 let pendingPayments = [];
 let isReviewLoading = false;
+let reviewQuery = "";
 
 bootstrapReview();
 
@@ -33,6 +35,10 @@ function bootstrapReview() {
 
   if (reviewList) {
     reviewList.addEventListener("click", handleReviewActions);
+  }
+
+  if (reviewSearch) {
+    reviewSearch.addEventListener("input", handleReviewSearch);
   }
 
   renderReviewList();
@@ -130,8 +136,10 @@ async function handleReviewActions(event) {
 }
 
 function renderReviewList() {
+  const filteredPayments = filterPendingPayments();
+
   if (reviewCount) {
-    reviewCount.textContent = String(pendingPayments.length);
+    reviewCount.textContent = String(filteredPayments.length);
   }
 
   if (!reviewList || !reviewEmpty) {
@@ -148,9 +156,17 @@ function renderReviewList() {
     return;
   }
 
+  if (!filteredPayments.length) {
+    reviewList.hidden = true;
+    reviewList.innerHTML = "";
+    reviewEmpty.hidden = false;
+    reviewEmpty.textContent = "No pending payments match this search.";
+    return;
+  }
+
   reviewEmpty.hidden = true;
   reviewList.hidden = false;
-  reviewList.innerHTML = pendingPayments
+  reviewList.innerHTML = filteredPayments
     .map(
       (payment) => `
         <article class="builder-panel review-item">
@@ -161,10 +177,14 @@ function renderReviewList() {
             </div>
             <div class="plan-badge">INR ${escapeHtml(payment.amountInr || 0)}</div>
           </div>
+          <div class="review-utr-card">
+            <span>UTR</span>
+            <strong>${escapeHtml(payment.reference || "-")}</strong>
+          </div>
           <div class="review-meta-grid">
             <div><span>User</span><strong>${escapeHtml(payment.userName || "-")}</strong></div>
             <div><span>Email</span><strong>${escapeHtml(payment.userEmail || "-")}</strong></div>
-            <div><span>UTR</span><strong>${escapeHtml(payment.reference || "-")}</strong></div>
+            <div><span>UPI ID</span><strong>${escapeHtml(payment.upiId || "-")}</strong></div>
             <div><span>Submitted</span><strong>${escapeHtml(formatDate(payment.createdAt) || "-")}</strong></div>
           </div>
           <div class="review-actions">
@@ -175,6 +195,31 @@ function renderReviewList() {
       `
     )
     .join("");
+}
+
+function handleReviewSearch(event) {
+  reviewQuery = String(event.target?.value || "").trim().toLowerCase();
+  renderReviewList();
+}
+
+function filterPendingPayments() {
+  if (!reviewQuery) {
+    return pendingPayments;
+  }
+
+  return pendingPayments.filter((payment) => {
+    const haystack = [
+      payment.reference,
+      payment.userEmail,
+      payment.userName,
+      payment.planLabel,
+      payment.upiId
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+    return haystack.includes(reviewQuery);
+  });
 }
 
 function setReviewLoading(isLoading) {

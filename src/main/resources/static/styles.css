@@ -2385,6 +2385,10 @@ code {
   margin-bottom: 22px;
 }
 
+.review-search-field {
+  margin-bottom: 22px;
+}
+
 .review-summary-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2399,6 +2403,33 @@ code {
 
 .review-item {
   padding: 22px;
+}
+
+.review-utr-card {
+  margin-bottom: 18px;
+  padding: 16px 18px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(22, 105, 216, 0.09), rgba(255, 179, 32, 0.1));
+  border: 1px solid rgba(22, 105, 216, 0.12);
+}
+
+.review-utr-card span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(13, 95, 207, 0.72);
+}
+
+.review-utr-card strong {
+  display: block;
+  color: var(--ink-strong);
+  font-family: "SFMono-Regular", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: clamp(1rem, 2vw, 1.2rem);
+  line-height: 1.5;
+  word-break: break-all;
 }
 
 .review-item-head {

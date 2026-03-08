@@ -38,7 +38,6 @@ const premiumDuration = document.querySelector("#premium-duration");
 const premiumUpiId = document.querySelector("#premium-upi-id");
 const premiumNote = document.querySelector("#premium-note");
 const premiumPayLink = document.querySelector("#premium-pay-link");
-const premiumAppLinks = document.querySelector("#premium-app-links");
 const premiumCopyUpi = document.querySelector("#premium-copy-upi");
 const premiumForm = document.querySelector("#premium-form");
 const premiumReferenceInput = document.querySelector("#premium-reference");
@@ -78,13 +77,6 @@ const DEMO_DATA = {
   additionalRequirements:
     "Use fast input handling and explain why prefix remainder counting works."
 };
-
-const UPI_APP_OPTIONS = [
-  { label: "Google Pay", packageName: "com.google.android.apps.nbu.paisa.user" },
-  { label: "PhonePe", packageName: "com.phonepe.app" },
-  { label: "Paytm", packageName: "net.one97.paytm" },
-  { label: "BHIM", packageName: "in.org.npci.upiapp" }
-];
 
 const state = {
   latestResult: null,
@@ -135,10 +127,6 @@ function bootstrap() {
 
   if (premiumForm) {
     premiumForm.addEventListener("submit", handlePremiumSubmit);
-  }
-
-  if (premiumAppLinks) {
-    premiumAppLinks.addEventListener("click", handlePremiumAppLaunch);
   }
 
   if (premiumCopyUpi) {
@@ -461,7 +449,6 @@ function renderBillingCheckout(checkout) {
     premiumUpiId.textContent = checkout.upiId || "-";
     premiumNote.textContent = "Premium checkout is unavailable right now.";
     premiumPayLink.href = "#";
-    renderPremiumAppLinks("");
     syncPremiumCheckoutControls(checkout);
     return;
   }
@@ -510,7 +497,6 @@ function renderBillingCheckout(checkout) {
       ? `Submitted UTR: ${pendingPayment.reference}. Wait for manual approval before premium unlocks.`
       : "Payment submitted. Wait for manual approval before premium unlocks.";
     premiumPayLink.href = "#";
-    renderPremiumAppLinks("");
     showPremiumMessage("Payment submitted. Premium will unlock after you manually approve this UTR.");
     syncPremiumCheckoutControls(checkout);
     return;
@@ -524,7 +510,6 @@ function renderBillingCheckout(checkout) {
     ? `Pay to ${checkout.upiName || "our UPI ID"}, then submit the UTR for manual approval: ${selectedPlan.note}`
     : "Use any UPI app to complete the payment, then submit the UTR for review.";
   premiumPayLink.href = selectedPlan.upiUrl || "#";
-  renderPremiumAppLinks(selectedPlan.upiUrl || "");
   syncPremiumCheckoutControls(checkout);
 }
 
@@ -649,89 +634,6 @@ function syncPremiumCheckoutControls(checkout = state.billingCheckout) {
     premiumPayLink.style.opacity = locked ? "0.72" : "";
   }
 
-  if (premiumAppLinks) {
-    const links = premiumAppLinks.querySelectorAll(".premium-app-link");
-    for (const link of links) {
-      link.disabled = locked;
-      link.style.pointerEvents = locked ? "none" : "";
-      link.style.opacity = locked ? "0.52" : "";
-    }
-  }
-}
-
-function renderPremiumAppLinks(upiUrl) {
-  if (!premiumAppLinks) {
-    return;
-  }
-
-  if (!upiUrl) {
-    premiumAppLinks.innerHTML = '<p class="premium-app-note">Use Copy UPI ID if you want to pay from a different app.</p>';
-    return;
-  }
-
-  if (!isAndroidDevice()) {
-    premiumAppLinks.innerHTML = `
-      <p class="premium-app-note">
-        ${escapeHtml(
-          isIosDevice()
-            ? "On iPhone, app-specific launch buttons are not supported here. Use Open default UPI app or Copy UPI ID."
-            : "App-specific launch buttons are available on Android only. Use Open default UPI app or Copy UPI ID on this device."
-        )}
-      </p>
-    `;
-    return;
-  }
-
-  premiumAppLinks.innerHTML = UPI_APP_OPTIONS.map((app) => `
-    <button
-      class="premium-app-link"
-      type="button"
-      data-premium-app="${escapeHtml(app.label)}"
-      data-premium-app-url="${escapeHtml(buildUpiAppLink(upiUrl, app.packageName))}"
-    >${escapeHtml(app.label)}</button>
-  `).join("");
-}
-
-function buildUpiAppLink(upiUrl, packageName) {
-  if (!upiUrl) {
-    return "#";
-  }
-
-  const normalized = String(upiUrl).trim();
-  const intentPayload = normalized.replace(/^upi:\/\//, "");
-  const fallbackUrl = `https://play.google.com/store/apps/details?id=${encodeURIComponent(packageName)}`;
-  return [
-    `intent://${intentPayload}#Intent`,
-    "scheme=upi",
-    `package=${packageName}`,
-    "action=android.intent.action.VIEW",
-    `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)}`,
-    "end"
-  ].join(";");
-}
-
-function handlePremiumAppLaunch(event) {
-  const button = event.target.closest("[data-premium-app-url]");
-  if (!button) {
-    return;
-  }
-
-  event.preventDefault();
-  const launchUrl = button.dataset.premiumAppUrl || "";
-  if (!launchUrl || launchUrl === "#") {
-    showPremiumMessage("This app link is unavailable right now.");
-    return;
-  }
-
-  window.location.assign(launchUrl);
-}
-
-function isAndroidDevice() {
-  return /Android/i.test(navigator.userAgent || "");
-}
-
-function isIosDevice() {
-  return /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 }
 
 function showPremiumMessage(message) {

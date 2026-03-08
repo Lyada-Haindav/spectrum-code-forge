@@ -20,13 +20,8 @@
           <small>Logic. Code. Review.</small>
         </span>
       </a>
-      <nav class="builder-nav">
-        <a href="/">Home</a>
-        <a href="/workspace">Workspace</a>
-        <a href="/review">Premium review</a>
-      </nav>
       <div class="topbar-actions">
-        <a class="hero-button hero-button-secondary" href="/workspace">Back to workspace</a>
+        <a class="hero-button hero-button-secondary" href="/">Back home</a>
       </div>
     </header>
 
@@ -34,7 +29,7 @@
       <section class="builder-panel review-panel">
         <div class="section-head section-head-light">
           <div>
-            <p class="section-kicker section-kicker-light">Manual premium review</p>
+            <p class="section-kicker section-kicker-light">Manual premium approval</p>
             <h2>Approve submitted UTRs</h2>
           </div>
           <button id="review-refresh" class="ghost-button ghost-button-light" type="button">Refresh</button>
@@ -60,6 +55,11 @@
         </form>
 
         <div id="review-message" class="inline-message" hidden></div>
+
+        <label class="field review-search-field">
+          <span>Search by UTR, email, or user</span>
+          <input id="review-search" type="text" placeholder="Example: 123456789012 or user@email.com" autocomplete="off" />
+        </label>
 
         <div class="review-summary-row">
           <article class="premium-card">

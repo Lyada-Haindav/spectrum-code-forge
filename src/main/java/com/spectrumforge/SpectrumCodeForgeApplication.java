@@ -27,13 +27,16 @@ public final class SpectrumCodeForgeApplication {
         "/workspace", "/builder.html",
         "/verify", "/verify.html",
         "/reset", "/reset.html",
-        "/review", "/review.html"
+        "/APPROVE", "/review.html"
     );
     private static final Map<String, String> LEGACY_STATIC_REDIRECTS = Map.of(
         "/builder.html", "/workspace",
         "/verify.html", "/verify",
         "/reset.html", "/reset",
-        "/review.html", "/review"
+        "/approve", "/APPROVE",
+        "/approve.html", "/APPROVE",
+        "/review", "/APPROVE",
+        "/review.html", "/APPROVE"
     );
 
     private final AppConfig config;
