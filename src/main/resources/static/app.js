@@ -137,6 +137,10 @@ function bootstrap() {
     premiumForm.addEventListener("submit", handlePremiumSubmit);
   }
 
+  if (premiumAppLinks) {
+    premiumAppLinks.addEventListener("click", handlePremiumAppLaunch);
+  }
+
   if (premiumCopyUpi) {
     premiumCopyUpi.addEventListener("click", copyPremiumUpiId);
   }
@@ -646,8 +650,9 @@ function syncPremiumCheckoutControls(checkout = state.billingCheckout) {
   }
 
   if (premiumAppLinks) {
-    const links = premiumAppLinks.querySelectorAll("a");
+    const links = premiumAppLinks.querySelectorAll(".premium-app-link");
     for (const link of links) {
+      link.disabled = locked;
       link.style.pointerEvents = locked ? "none" : "";
       link.style.opacity = locked ? "0.52" : "";
     }
@@ -664,12 +669,26 @@ function renderPremiumAppLinks(upiUrl) {
     return;
   }
 
+  if (!isAndroidDevice()) {
+    premiumAppLinks.innerHTML = `
+      <p class="premium-app-note">
+        ${escapeHtml(
+          isIosDevice()
+            ? "On iPhone, app-specific launch buttons are not supported here. Use Open default UPI app or Copy UPI ID."
+            : "App-specific launch buttons are available on Android only. Use Open default UPI app or Copy UPI ID on this device."
+        )}
+      </p>
+    `;
+    return;
+  }
+
   premiumAppLinks.innerHTML = UPI_APP_OPTIONS.map((app) => `
-    <a
+    <button
       class="premium-app-link"
-      href="${escapeHtml(buildUpiAppLink(upiUrl, app.packageName))}"
+      type="button"
       data-premium-app="${escapeHtml(app.label)}"
-    >${escapeHtml(app.label)}</a>
+      data-premium-app-url="${escapeHtml(buildUpiAppLink(upiUrl, app.packageName))}"
+    >${escapeHtml(app.label)}</button>
   `).join("");
 }
 
@@ -679,16 +698,40 @@ function buildUpiAppLink(upiUrl, packageName) {
   }
 
   const normalized = String(upiUrl).trim();
-  if (!isAndroidDevice()) {
-    return normalized;
+  const intentPayload = normalized.replace(/^upi:\/\//, "");
+  const fallbackUrl = `https://play.google.com/store/apps/details?id=${encodeURIComponent(packageName)}`;
+  return [
+    `intent://${intentPayload}#Intent`,
+    "scheme=upi",
+    `package=${packageName}`,
+    "action=android.intent.action.VIEW",
+    `S.browser_fallback_url=${encodeURIComponent(fallbackUrl)}`,
+    "end"
+  ].join(";");
+}
+
+function handlePremiumAppLaunch(event) {
+  const button = event.target.closest("[data-premium-app-url]");
+  if (!button) {
+    return;
   }
 
-  const intentPayload = normalized.replace(/^upi:\/\//, "");
-  return `intent://${intentPayload}#Intent;scheme=upi;package=${packageName};end`;
+  event.preventDefault();
+  const launchUrl = button.dataset.premiumAppUrl || "";
+  if (!launchUrl || launchUrl === "#") {
+    showPremiumMessage("This app link is unavailable right now.");
+    return;
+  }
+
+  window.location.assign(launchUrl);
 }
 
 function isAndroidDevice() {
   return /Android/i.test(navigator.userAgent || "");
+}
+
+function isIosDevice() {
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 }
 
 function showPremiumMessage(message) {

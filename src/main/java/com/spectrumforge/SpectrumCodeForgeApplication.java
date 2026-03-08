@@ -22,6 +22,19 @@ public final class SpectrumCodeForgeApplication {
         ".json", "application/json; charset=utf-8",
         ".svg", "image/svg+xml"
     );
+    private static final Map<String, String> STATIC_ROUTE_ALIASES = Map.of(
+        "/", "/index.html",
+        "/workspace", "/builder.html",
+        "/verify", "/verify.html",
+        "/reset", "/reset.html",
+        "/review", "/review.html"
+    );
+    private static final Map<String, String> LEGACY_STATIC_REDIRECTS = Map.of(
+        "/builder.html", "/workspace",
+        "/verify.html", "/verify",
+        "/reset.html", "/reset",
+        "/review.html", "/review"
+    );
 
     private final AppConfig config;
     private final GeminiClient client;
@@ -411,21 +424,28 @@ public final class SpectrumCodeForgeApplication {
         try {
             requireMethod(exchange, "GET");
             String path = exchange.getRequestURI().getPath();
-            if (path == null || path.isBlank() || path.equals("/")) {
-                path = "/index.html";
+            if (path == null || path.isBlank()) {
+                path = "/";
             }
             if (path.contains("..")) {
                 throw new AppException(403, "Access denied.");
             }
 
-            String resourcePath = "/static" + path;
+            String redirectPath = LEGACY_STATIC_REDIRECTS.get(path);
+            if (redirectPath != null) {
+                redirect(exchange, redirectPath + querySuffix(exchange), 302);
+                return;
+            }
+
+            String resolvedPath = STATIC_ROUTE_ALIASES.getOrDefault(path, path);
+            String resourcePath = "/static" + resolvedPath;
             try (InputStream inputStream = SpectrumCodeForgeApplication.class.getResourceAsStream(resourcePath)) {
                 if (inputStream == null) {
                     throw new AppException(404, "File not found.");
                 }
 
                 byte[] bytes = inputStream.readAllBytes();
-                exchange.getResponseHeaders().set("Content-Type", contentType(path));
+                exchange.getResponseHeaders().set("Content-Type", contentType(resolvedPath));
                 exchange.sendResponseHeaders(200, bytes.length);
                 try (OutputStream outputStream = exchange.getResponseBody()) {
                     outputStream.write(bytes);
@@ -515,6 +535,17 @@ public final class SpectrumCodeForgeApplication {
         } catch (NumberFormatException ignored) {
             return 0;
         }
+    }
+
+    private void redirect(HttpExchange exchange, String location, int status) throws IOException {
+        exchange.getResponseHeaders().set("Location", location);
+        exchange.sendResponseHeaders(status, -1);
+        exchange.close();
+    }
+
+    private String querySuffix(HttpExchange exchange) {
+        String rawQuery = exchange.getRequestURI().getRawQuery();
+        return rawQuery == null || rawQuery.isBlank() ? "" : "?" + rawQuery;
     }
 
     private AuthUser authUserFromPayload(Map<String, Object> payload) {

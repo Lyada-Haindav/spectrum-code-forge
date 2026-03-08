@@ -28,7 +28,7 @@ final class EmailService {
         }
 
         String verifyUrl = normalizedBaseUrl(config.appBaseUrl())
-            + "/verify.html?token="
+            + "/verify?token="
             + URLEncoder.encode(verificationToken, StandardCharsets.UTF_8);
 
         String subject = "Confirm your email";
@@ -58,7 +58,7 @@ final class EmailService {
         }
 
         String resetUrl = normalizedBaseUrl(config.appBaseUrl())
-            + "/reset.html?token="
+            + "/reset?token="
             + URLEncoder.encode(resetToken, StandardCharsets.UTF_8);
 
         String subject = "Reset your password";

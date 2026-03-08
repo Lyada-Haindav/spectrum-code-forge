@@ -162,7 +162,7 @@ async function submitAuthForm(event, mode) {
 
     if (authState.intent === "workspace") {
       writeAuthFlash(verificationPending ? verificationMessage : "Spectrum Code Forge is unlocked. You can generate and save solutions now.");
-      window.location.href = "/builder.html";
+      window.location.href = "/workspace";
       return;
     }
 
@@ -377,7 +377,7 @@ function clearAuthMessage() {
 
 function handleWorkspaceEntry() {
   if (authState.user) {
-    window.location.href = "/builder.html";
+    window.location.href = "/workspace";
     return;
   }
 
