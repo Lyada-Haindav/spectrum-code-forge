@@ -77,7 +77,7 @@ async function handleResetSubmit(event) {
     renderResetState(
       "Password updated",
       result.user?.emailVerified
-        ? "Your password is updated and you are signed in now. Open the workspace and continue."
+        ? "Your password is updated and you are signed in now. Open Spectrum Code Forge and continue."
         : "Your password is updated and you are signed in now. Verify your email if this account still needs confirmation.",
       "Password reset complete.",
       false

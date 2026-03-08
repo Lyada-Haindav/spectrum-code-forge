@@ -67,6 +67,9 @@ public final class SpectrumCodeForgeApplication {
         server.createContext("/api/auth/logout", this::handleLogout);
         server.createContext("/api/billing/checkout", this::handleBillingCheckout);
         server.createContext("/api/billing/upgrade", this::handleBillingUpgrade);
+        server.createContext("/api/billing/review/pending", this::handleBillingReviewPending);
+        server.createContext("/api/billing/review/approve", this::handleBillingReviewApprove);
+        server.createContext("/api/billing/review/reject", this::handleBillingReviewReject);
         server.createContext("/api/generate", this::handleGenerate);
         server.createContext("/api/history/item", this::handleHistoryItem);
         server.createContext("/api/history/pin", this::handleHistoryPin);
@@ -255,43 +258,76 @@ public final class SpectrumCodeForgeApplication {
             Map<String, Object> payload = readJsonBody(exchange);
             String planCode = readString(payload, "planCode");
             String transactionReference = readString(payload, "transactionReference");
-            Map<String, Object> response = billingService.confirmPremium(user, config, planCode, transactionReference, authService);
+            sendJson(exchange, 200, billingService.submitPremiumRequest(user, config, planCode, transactionReference));
+        } catch (AppException error) {
+            sendError(exchange, error);
+        }
+    }
 
-            boolean alreadyPremium = readBoolean(response, "alreadyPremium");
-            if (!alreadyPremium) {
-                AuthUser refreshedUser = authService.currentUser(exchange, config.freeDailyLimit()).orElse(user);
-                String referenceForEmail = transactionReference;
-                String planLabelForEmail = "Premium";
-                String expiresAtForEmail = "";
-                int amountForEmail = 0;
+    private void handleBillingReviewPending(HttpExchange exchange) throws IOException {
+        try {
+            requireMethod(exchange, "GET");
+            sendJson(exchange, 200, billingService.reviewQueue(config, readReviewKey(exchange)));
+        } catch (AppException error) {
+            sendError(exchange, error);
+        }
+    }
+
+    private void handleBillingReviewApprove(HttpExchange exchange) throws IOException {
+        try {
+            requireMethod(exchange, "POST");
+            Map<String, Object> payload = readJsonBody(exchange);
+            Map<String, Object> response = billingService.approvePendingPayment(
+                config,
+                readReviewKey(exchange),
+                readString(payload, "paymentId"),
+                authService
+            );
+
+            boolean alreadyApproved = readBoolean(response, "alreadyApproved");
+            if (!alreadyApproved) {
                 Object paymentValue = response.get("payment");
-                if (paymentValue instanceof Map<?, ?> paymentMap) {
+                Object userValue = response.get("user");
+                if (paymentValue instanceof Map<?, ?> paymentMap && userValue instanceof Map<?, ?> userMap) {
                     Map<String, Object> payment = MiniJson.asObject(paymentMap, "Invalid payment response.");
-                    referenceForEmail = readString(payment, "reference");
-                    planLabelForEmail = readString(payment, "planLabel");
-                    expiresAtForEmail = readString(payment, "expiresAt");
-                    amountForEmail = readInt(payment, "amountInr");
-                }
-                try {
-                    boolean premiumEmailSent = emailService.sendPremiumSuccessEmail(
-                        refreshedUser,
-                        referenceForEmail,
-                        planLabelForEmail,
-                        amountForEmail,
-                        expiresAtForEmail,
-                        config
-                    );
-                    response.put("premiumEmailSent", premiumEmailSent);
-                    if (!premiumEmailSent) {
-                        response.put("premiumEmailNotice", "Premium is active now, but confirmation email delivery is unavailable.");
+                    AuthUser approvedUser = authUserFromPayload(MiniJson.asObject(userMap, "Invalid user response."));
+                    try {
+                        boolean premiumEmailSent = emailService.sendPremiumSuccessEmail(
+                            approvedUser,
+                            readString(payment, "reference"),
+                            readString(payment, "planLabel"),
+                            readInt(payment, "amountInr"),
+                            readString(payment, "expiresAt"),
+                            config
+                        );
+                        response.put("premiumEmailSent", premiumEmailSent);
+                    } catch (AppException error) {
+                        response.put("premiumEmailSent", false);
+                        response.put("premiumEmailNotice", error.getMessage());
                     }
-                } catch (AppException error) {
-                    response.put("premiumEmailSent", false);
-                    response.put("premiumEmailNotice", error.getMessage());
                 }
             }
 
             sendJson(exchange, 200, response);
+        } catch (AppException error) {
+            sendError(exchange, error);
+        }
+    }
+
+    private void handleBillingReviewReject(HttpExchange exchange) throws IOException {
+        try {
+            requireMethod(exchange, "POST");
+            Map<String, Object> payload = readJsonBody(exchange);
+            sendJson(
+                exchange,
+                200,
+                billingService.rejectPendingPayment(
+                    config,
+                    readReviewKey(exchange),
+                    readString(payload, "paymentId"),
+                    readString(payload, "note")
+                )
+            );
         } catch (AppException error) {
             sendError(exchange, error);
         }
@@ -461,6 +497,11 @@ public final class SpectrumCodeForgeApplication {
         return value != null && "true".equalsIgnoreCase(String.valueOf(value).trim());
     }
 
+    private String readReviewKey(HttpExchange exchange) {
+        String value = exchange.getRequestHeaders().getFirst("X-Review-Key");
+        return value == null ? "" : value.trim();
+    }
+
     private int readInt(Map<String, Object> payload, String key) {
         Object value = payload.get(key);
         if (value instanceof Number number) {
@@ -474,6 +515,27 @@ public final class SpectrumCodeForgeApplication {
         } catch (NumberFormatException ignored) {
             return 0;
         }
+    }
+
+    private AuthUser authUserFromPayload(Map<String, Object> payload) {
+        return new AuthUser(
+            readString(payload, "id"),
+            readString(payload, "name"),
+            readString(payload, "email"),
+            readBoolean(payload, "emailVerified"),
+            readBoolean(payload, "premium"),
+            readString(payload, "premiumPlanCode"),
+            readString(payload, "premiumPlanLabel"),
+            readString(payload, "premiumExpiresAt"),
+            readBoolean(payload, "premiumPending"),
+            readString(payload, "premiumPendingPlanCode"),
+            readString(payload, "premiumPendingPlanLabel"),
+            readString(payload, "premiumPendingSubmittedAt"),
+            readInt(payload, "dailyLimit"),
+            readInt(payload, "dailyUsed"),
+            readInt(payload, "dailyRemaining"),
+            readBoolean(payload, "canGenerate")
+        );
     }
 
     private void sendJson(HttpExchange exchange, int statusCode, Object payload) throws IOException {

@@ -24,8 +24,8 @@ async function bootstrapVerification() {
 
     renderVerificationState(
       "Email confirmed",
-      "Your account is verified now. The workspace and premium upgrade are unlocked.",
-      "Confirmation complete. You can continue straight to the workspace."
+      "Your account is verified now. Spectrum Code Forge and premium upgrade are unlocked.",
+      "Confirmation complete. You can continue straight to the Spectrum Code Forge workspace."
     );
   } catch (error) {
     renderVerificationState(

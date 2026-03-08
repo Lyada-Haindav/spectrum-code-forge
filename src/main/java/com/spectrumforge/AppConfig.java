@@ -20,6 +20,7 @@ record AppConfig(
     int freeDailyLimit,
     String premiumUpiId,
     String premiumUpiName,
+    String premiumReviewKey,
     List<PremiumPlan> premiumPlans,
     String brevoApiKey,
     String brevoSenderEmail,
@@ -57,6 +58,7 @@ record AppConfig(
         int freeDailyLimit = parseInt(value("FREE_DAILY_LIMIT", fileEnv), 6);
         String premiumUpiId = value("PREMIUM_UPI_ID", fileEnv);
         String premiumUpiName = value("PREMIUM_UPI_NAME", fileEnv);
+        String premiumReviewKey = value("PREMIUM_REVIEW_KEY", fileEnv);
         if (premiumUpiName.isBlank()) {
             premiumUpiName = "Spectrum Code Forge";
         }
@@ -87,6 +89,7 @@ record AppConfig(
             freeDailyLimit,
             premiumUpiId,
             premiumUpiName,
+            premiumReviewKey,
             premiumPlans,
             brevoApiKey,
             brevoSenderEmail,

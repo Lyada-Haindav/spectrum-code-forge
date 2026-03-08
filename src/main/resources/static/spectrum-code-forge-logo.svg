@@ -1,0 +1,19 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="24" y1="20" x2="132" y2="140" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0D5FCF"/>
+      <stop offset="1" stop-color="#2E8DF7"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="42" y1="54" x2="118" y2="112" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFB320"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="136" height="136" rx="34" fill="url(#bg)"/>
+  <rect x="20" y="20" width="120" height="120" rx="28" stroke="white" stroke-opacity="0.12" stroke-width="2"/>
+  <path d="M58 49C44.2 49 33 60.2 33 74C33 82.8 37.6 90.5 45 95L45.1 111.8C45.1 114.1 47 116 49.3 116H58.3C60.6 116 62.5 114.1 62.5 111.8V104.3C64.9 104.8 67.4 105 70 105C85.5 105 98 92.5 98 77C98 61.5 85.5 49 70 49H58ZM70 61C78.8 61 86 68.2 86 77C86 85.8 78.8 93 70 93C61.2 93 54 85.8 54 77C54 68.2 61.2 61 70 61Z" fill="white"/>
+  <path d="M108 48C115.7 48 122 54.3 122 62V66H126.5C129 66 131 68 131 70.5C131 73 129 75 126.5 75H122V83H126.5C129 83 131 85 131 87.5C131 90 129 92 126.5 92H122V96C122 103.7 115.7 110 108 110H100C97.5 110 95.5 108 95.5 105.5C95.5 103 97.5 101 100 101H108C110.7 101 113 98.7 113 96V92H108.5C106 92 104 90 104 87.5C104 85 106 83 108.5 83H113V75H108.5C106 75 104 73 104 70.5C104 68 106 66 108.5 66H113V62C113 59.3 110.7 57 108 57H100C97.5 57 95.5 55 95.5 52.5C95.5 50 97.5 48 100 48H108Z" fill="url(#spark)"/>
+  <circle cx="121" cy="70.5" r="4" fill="#FFB320"/>
+  <circle cx="121" cy="87.5" r="4" fill="#FFB320"/>
+  <circle cx="49.5" cy="116" r="5" fill="#FFB320"/>
+</svg>

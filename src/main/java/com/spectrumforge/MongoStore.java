@@ -87,6 +87,8 @@ final class MongoStore implements AutoCloseable {
         users().createIndex(ascending("resetToken"));
         history().createIndex(compoundIndex(ascending("userId"), descending("pinned"), descending("createdAt")));
         payments().createIndex(ascending("transactionReference"), new IndexOptions().unique(true));
+        payments().createIndex(compoundIndex(ascending("userId"), ascending("status"), descending("createdAt")));
+        payments().createIndex(compoundIndex(ascending("status"), descending("createdAt")));
         sessions().createIndex(ascending("userId"));
         sessions().createIndex(
             ascending("expiresAt"),

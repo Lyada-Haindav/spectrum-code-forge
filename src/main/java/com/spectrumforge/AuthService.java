@@ -26,6 +26,7 @@ import static com.mongodb.client.model.Filters.eq;
 
 final class AuthService {
     private static final String SESSION_COOKIE = "solver_session";
+    private static final String PAYMENT_PENDING_REVIEW = "pending_review";
     private static final int HASH_ITERATIONS = 120_000;
     private static final int HASH_BITS = 256;
     private static final int SALT_BYTES = 16;
@@ -36,11 +37,13 @@ final class AuthService {
 
     private final MongoCollection<Document> users;
     private final MongoCollection<Document> sessions;
+    private final MongoCollection<Document> payments;
     private final SecureRandom secureRandom = new SecureRandom();
 
     AuthService(MongoStore store) {
         this.users = store.users();
         this.sessions = store.sessions();
+        this.payments = store.payments();
     }
 
     synchronized RegistrationResult register(String name, String email, String password, int freeDailyLimit) {
@@ -501,6 +504,7 @@ final class AuthService {
     private AuthUser toAuthUser(StoredUser user, int freeDailyLimit) {
         int used = user.premium() ? 0 : Math.max(0, user.dailyUsageCount());
         int remaining = user.premium() ? -1 : Math.max(0, freeDailyLimit - used);
+        PendingPayment pendingPayment = pendingPaymentForUser(user.id());
         return new AuthUser(
             user.id(),
             user.name(),
@@ -510,10 +514,28 @@ final class AuthService {
             user.premiumPlanCode(),
             user.premiumPlanLabel(),
             user.premiumExpiresAt(),
+            pendingPayment != null,
+            pendingPayment == null ? "" : pendingPayment.planCode(),
+            pendingPayment == null ? "" : pendingPayment.planLabel(),
+            pendingPayment == null ? "" : pendingPayment.submittedAt(),
             freeDailyLimit,
             used,
             remaining,
             user.emailVerified() && (user.premium() || remaining > 0)
+        );
+    }
+
+    private PendingPayment pendingPaymentForUser(String userId) {
+        Document document = payments.find(new Document("userId", userId).append("status", PAYMENT_PENDING_REVIEW))
+            .sort(new Document("createdAt", -1))
+            .first();
+        if (document == null) {
+            return null;
+        }
+        return new PendingPayment(
+            readString(document, "planCode"),
+            readString(document, "planLabel"),
+            readString(document, "createdAt")
         );
     }
 
@@ -696,6 +718,9 @@ final class AuthService {
     }
 
     record PasswordResetDispatch(AuthUser user, String resetToken) {
+    }
+
+    private record PendingPayment(String planCode, String planLabel, String submittedAt) {
     }
 
     private record StoredUser(

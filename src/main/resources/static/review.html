@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Premium Review | Spectrum Code Forge</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="builder-page home-page">
+    <div class="builder-glow builder-glow-coral"></div>
+    <div class="builder-glow builder-glow-cyan"></div>
+    <div class="builder-glow builder-glow-gold"></div>
+
+    <header class="builder-topbar">
+      <a class="brand-lockup" href="/">
+        <img class="brand-logo" src="/spectrum-code-forge-logo.svg" alt="Spectrum Code Forge" />
+        <span class="brand-copy">
+          <strong>Spectrum Code Forge</strong>
+          <small>Logic. Code. Review.</small>
+        </span>
+      </a>
+      <nav class="builder-nav">
+        <a href="/">Home</a>
+        <a href="/builder.html">Workspace</a>
+        <a href="/review.html">Premium review</a>
+      </nav>
+      <div class="topbar-actions">
+        <a class="hero-button hero-button-secondary" href="/builder.html">Back to workspace</a>
+      </div>
+    </header>
+
+    <main class="builder-shell home-shell review-shell">
+      <section class="builder-panel review-panel">
+        <div class="section-head section-head-light">
+          <div>
+            <p class="section-kicker section-kicker-light">Manual premium review</p>
+            <h2>Approve submitted UTRs</h2>
+          </div>
+          <button id="review-refresh" class="ghost-button ghost-button-light" type="button">Refresh</button>
+        </div>
+
+        <p class="review-copy">
+          Match each UTR with your bank or UPI app statement, then approve the correct payment.
+          Premium is activated only after approval.
+        </p>
+
+        <form id="review-key-form" class="auth-form review-key-form">
+          <label class="field">
+            <span>Premium review key</span>
+            <div class="input-shell">
+              <input id="review-key" type="password" placeholder="Enter PREMIUM_REVIEW_KEY" autocomplete="off" required />
+              <button class="field-toggle" id="review-key-toggle" type="button">Show</button>
+            </div>
+          </label>
+          <button class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Secure review</span>
+            <strong>Load pending payments</strong>
+          </button>
+        </form>
+
+        <div id="review-message" class="inline-message" hidden></div>
+
+        <div class="review-summary-row">
+          <article class="premium-card">
+            <span>Pending count</span>
+            <strong id="review-count">0</strong>
+            <p>Payments waiting for your decision.</p>
+          </article>
+          <article class="premium-card premium-card-wide">
+            <span>Review process</span>
+            <strong>Bank match first</strong>
+            <p>Only approve after the UTR and amount match your real received payment.</p>
+          </article>
+        </div>
+
+        <div id="review-empty" class="history-empty">Enter the review key to load pending payments.</div>
+        <div id="review-list" class="review-list" hidden></div>
+      </section>
+    </main>
+
+    <script src="/review.js"></script>
+  </body>
+</html>

@@ -32,6 +32,7 @@ const premiumCloseButton = document.querySelector("#premium-close");
 const premiumMessage = document.querySelector("#premium-message");
 const premiumPlanOptions = document.querySelector("#premium-plan-options");
 const premiumPlanLabel = document.querySelector("#premium-plan-label");
+const premiumPlanCopy = document.querySelector("#premium-plan-copy");
 const premiumPrice = document.querySelector("#premium-price");
 const premiumDuration = document.querySelector("#premium-duration");
 const premiumUpiId = document.querySelector("#premium-upi-id");
@@ -307,7 +308,7 @@ function renderPlanState() {
 
   if (!state.user.emailVerified) {
     planTitle.textContent = "Email verification pending";
-    planCopy.textContent = "Check your inbox for the confirmation link. Solver output and premium upgrade unlock after you verify your email.";
+    planCopy.textContent = "Check your inbox for the confirmation link. Spectrum Code Forge output and premium upgrade unlock after you verify your email.";
     planBadge.textContent = "Verify first";
     upgradeButton.hidden = false;
     upgradeButton.textContent = "Resend verification email";
@@ -323,6 +324,19 @@ function renderPlanState() {
       : "Unlimited daily solves are active for this account.";
     planBadge.textContent = premiumUntil ? `Active until ${premiumUntil}` : "Unlimited";
     upgradeButton.hidden = true;
+    return;
+  }
+
+  if (state.user.premiumPending) {
+    const pendingLabel = state.user.premiumPendingPlanLabel || "Premium payment";
+    const submittedAt = formatDate(state.user.premiumPendingSubmittedAt);
+    planTitle.textContent = "Payment under review";
+    planCopy.textContent = submittedAt
+      ? `${pendingLabel} was submitted on ${submittedAt}. Premium unlocks after manual approval.`
+      : `${pendingLabel} was submitted. Premium unlocks after manual approval.`;
+    planBadge.textContent = "Pending approval";
+    upgradeButton.hidden = false;
+    upgradeButton.textContent = "View payment status";
     return;
   }
 
@@ -421,18 +435,27 @@ function renderBillingCheckout(checkout) {
   }
 
   const plans = Array.isArray(checkout.plans) ? checkout.plans : [];
+  const pendingPayment = checkout.pendingPayment && typeof checkout.pendingPayment === "object"
+    ? checkout.pendingPayment
+    : null;
   if (!plans.length) {
     premiumPlanOptions.innerHTML = "";
     premiumPlanLabel.textContent = "Premium unavailable";
+    if (premiumPlanCopy) {
+      premiumPlanCopy.textContent = "No manual review request can be created right now.";
+    }
     premiumPrice.textContent = "INR -";
     premiumDuration.textContent = "No active plans are configured right now.";
     premiumUpiId.textContent = checkout.upiId || "-";
     premiumNote.textContent = "Premium checkout is unavailable right now.";
     premiumPayLink.href = "#";
+    syncPremiumCheckoutControls(checkout);
     return;
   }
 
-  if (!state.selectedPremiumPlanCode || !plans.some((plan) => plan.code === state.selectedPremiumPlanCode)) {
+  if (pendingPayment?.planCode) {
+    state.selectedPremiumPlanCode = pendingPayment.planCode;
+  } else if (!state.selectedPremiumPlanCode || !plans.some((plan) => plan.code === state.selectedPremiumPlanCode)) {
     state.selectedPremiumPlanCode = checkout.defaultPlanCode || plans[0].code;
   }
 
@@ -455,17 +478,39 @@ function renderBillingCheckout(checkout) {
 
   const selectedPlan = getSelectedPremiumPlan(checkout);
   if (!selectedPlan) {
+    syncPremiumCheckoutControls(checkout);
     return;
   }
 
   premiumPlanLabel.textContent = selectedPlan.label || "Premium plan";
   premiumPrice.textContent = `INR ${escapeHtml(selectedPlan.priceInr || 0)}`;
-  premiumDuration.textContent = selectedPlan.cycleLabel || "Unlimited daily solves while this plan stays active.";
   premiumUpiId.textContent = checkout.upiId || "-";
+
+  if (pendingPayment) {
+    if (premiumPlanCopy) {
+      premiumPlanCopy.textContent = "UTR submitted. Premium will unlock after manual review.";
+    }
+    premiumDuration.textContent = pendingPayment.createdAt
+      ? `Submitted on ${formatDate(pendingPayment.createdAt)}.`
+      : "Submitted for manual review.";
+    premiumNote.textContent = pendingPayment.reference
+      ? `Submitted UTR: ${pendingPayment.reference}. Wait for manual approval before premium unlocks.`
+      : "Payment submitted. Wait for manual approval before premium unlocks.";
+    premiumPayLink.href = "#";
+    showPremiumMessage("Payment submitted. Premium will unlock after you manually approve this UTR.");
+    syncPremiumCheckoutControls(checkout);
+    return;
+  }
+
+  if (premiumPlanCopy) {
+    premiumPlanCopy.textContent = "Unlimited daily solves unlock after your UTR is reviewed.";
+  }
+  premiumDuration.textContent = selectedPlan.cycleLabel || "Unlimited daily solves while this plan stays active.";
   premiumNote.textContent = selectedPlan.note
-    ? `Pay to ${checkout.upiName || "our UPI ID"} and keep this note or reference: ${selectedPlan.note}`
-    : "Use any UPI app to complete the payment.";
+    ? `Pay to ${checkout.upiName || "our UPI ID"}, then submit the UTR for manual approval: ${selectedPlan.note}`
+    : "Use any UPI app to complete the payment, then submit the UTR for review.";
   premiumPayLink.href = selectedPlan.upiUrl || "#";
+  syncPremiumCheckoutControls(checkout);
 }
 
 function getSelectedPremiumPlan(checkout = state.billingCheckout) {
@@ -533,29 +578,23 @@ async function handlePremiumSubmit(event) {
     });
     const result = await response.json();
     if (!response.ok) {
-      throw new Error(result.error || "Unable to activate premium right now.");
+      throw new Error(result.error || "Unable to submit this payment right now.");
     }
 
-    applyAccountSnapshot(result.user || null);
     state.billingCheckout = null;
     closePremiumModal();
     if (result.alreadyPremium) {
       showMessage("Premium is already active on this account.");
       return;
     }
-    if (result.premiumEmailSent === false) {
-      showMessage(result.premiumEmailNotice || "Premium unlocked. Confirmation email could not be sent right now.");
+    await window.solverAuth?.refreshSession?.();
+    if (result.alreadyPending) {
+      showMessage("This account already has a premium payment waiting for manual approval.");
     } else {
-      const unlockedUntil = formatDate(result.user?.premiumExpiresAt);
-      showMessage(
-        unlockedUntil
-          ? `Premium unlocked until ${unlockedUntil}. A confirmation email is on the way.`
-          : "Premium unlocked. A confirmation email is on the way."
-      );
+      showMessage("UTR submitted. Premium will unlock after you approve this payment manually.");
     }
-    void window.solverAuth?.refreshSession?.();
   } catch (error) {
-    showPremiumMessage(error.message || "Unable to activate premium right now.");
+    showPremiumMessage(error.message || "Unable to submit this payment right now.");
   } finally {
     setPremiumSubmitting(false);
   }
@@ -563,15 +602,36 @@ async function handlePremiumSubmit(event) {
 
 function setPremiumSubmitting(isSubmitting) {
   state.isPremiumSubmitting = isSubmitting;
+  syncPremiumCheckoutControls(state.billingCheckout);
+}
+
+function syncPremiumCheckoutControls(checkout = state.billingCheckout) {
+  const pendingPayment = checkout?.pendingPayment && typeof checkout.pendingPayment === "object"
+    ? checkout.pendingPayment
+    : null;
+  const locked = state.isPremiumSubmitting || Boolean(pendingPayment);
+
+  if (premiumReferenceInput) {
+    premiumReferenceInput.disabled = locked;
+    if (pendingPayment?.reference) {
+      premiumReferenceInput.value = pendingPayment.reference;
+    }
+  }
+
   if (premiumSubmitButton) {
-    premiumSubmitButton.disabled = isSubmitting;
+    premiumSubmitButton.disabled = locked;
+    premiumSubmitButton.innerHTML = pendingPayment
+      ? '<span class="auth-submit-kicker">Under review</span><strong>Waiting for approval</strong>'
+      : '<span class="auth-submit-kicker">Submit UTR</span><strong>Send for approval</strong>';
   }
+
   if (premiumCopyUpi) {
-    premiumCopyUpi.disabled = isSubmitting;
+    premiumCopyUpi.disabled = locked;
   }
+
   if (premiumPayLink) {
-    premiumPayLink.style.pointerEvents = isSubmitting ? "none" : "";
-    premiumPayLink.style.opacity = isSubmitting ? "0.72" : "";
+    premiumPayLink.style.pointerEvents = locked ? "none" : "";
+    premiumPayLink.style.opacity = locked ? "0.72" : "";
   }
 }
 

@@ -157,11 +157,11 @@ async function submitAuthForm(event, mode) {
     const verificationPending = Boolean(result.user) && !result.user.emailVerified;
     const verificationMessage =
       result.verificationEmailSent === true
-        ? "Check your inbox and confirm your email before using the solver."
-        : result.verificationNotice || "Verification is still pending. Open the workspace to resend the confirmation email.";
+        ? "Check your inbox and confirm your email before using Spectrum Code Forge."
+        : result.verificationNotice || "Verification is still pending. Open Spectrum Code Forge and resend the confirmation email.";
 
     if (authState.intent === "workspace") {
-      writeAuthFlash(verificationPending ? verificationMessage : "Workspace unlocked. You can generate and save solutions now.");
+      writeAuthFlash(verificationPending ? verificationMessage : "Spectrum Code Forge is unlocked. You can generate and save solutions now.");
       window.location.href = "/builder.html";
       return;
     }
@@ -343,7 +343,7 @@ function setAuthView(view) {
     } else {
       authKicker.textContent = "Welcome back";
       authTitle.textContent = "Sign in and continue";
-      authCopy.textContent = "Open your workspace, unlock code output, and continue from saved history.";
+      authCopy.textContent = "Open Spectrum Code Forge, unlock code output, and continue from saved history.";
     }
   }
 }
@@ -382,7 +382,7 @@ function handleWorkspaceEntry() {
   }
 
   openAuthModal("signin", "workspace");
-  showAuthMessage("Sign in first to open the workspace and unlock code output.");
+  showAuthMessage("Sign in first to open Spectrum Code Forge and unlock code output.");
 }
 
 function updateWorkspaceEntry() {
@@ -418,7 +418,7 @@ function updateWorkspaceEntry() {
       continue;
     }
 
-    button.textContent = authState.user ? "Go to workspace" : "Open Solver";
+    button.textContent = authState.user ? "Go to workspace" : "Open Spectrum Code Forge";
   }
 }
 

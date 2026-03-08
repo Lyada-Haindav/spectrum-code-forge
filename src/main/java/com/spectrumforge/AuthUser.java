@@ -12,6 +12,10 @@ record AuthUser(
     String premiumPlanCode,
     String premiumPlanLabel,
     String premiumExpiresAt,
+    boolean premiumPending,
+    String premiumPendingPlanCode,
+    String premiumPendingPlanLabel,
+    String premiumPendingSubmittedAt,
     int dailyLimit,
     int dailyUsed,
     int dailyRemaining,
@@ -27,6 +31,10 @@ record AuthUser(
         payload.put("premiumPlanCode", premiumPlanCode);
         payload.put("premiumPlanLabel", premiumPlanLabel);
         payload.put("premiumExpiresAt", premiumExpiresAt);
+        payload.put("premiumPending", premiumPending);
+        payload.put("premiumPendingPlanCode", premiumPendingPlanCode);
+        payload.put("premiumPendingPlanLabel", premiumPendingPlanLabel);
+        payload.put("premiumPendingSubmittedAt", premiumPendingSubmittedAt);
         payload.put("dailyLimit", dailyLimit);
         payload.put("dailyUsed", dailyUsed);
         payload.put("dailyRemaining", dailyRemaining);

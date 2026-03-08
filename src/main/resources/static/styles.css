@@ -78,6 +78,42 @@ textarea {
   letter-spacing: 0.04em;
 }
 
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 10px 22px rgba(22, 105, 216, 0.18));
+}
+
+.brand-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1;
+}
+
+.brand-copy strong {
+  font-size: 1rem;
+  font-weight: 900;
+  letter-spacing: 0.01em;
+}
+
+.brand-copy small {
+  margin-top: 4px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
 .brand-mark::before {
   content: "";
   width: 14px;
@@ -2270,6 +2306,83 @@ code {
   color: var(--cyan-deep);
 }
 
+.review-shell {
+  max-width: 1100px;
+}
+
+.review-panel {
+  padding: 28px;
+}
+
+.review-copy {
+  margin: 0 0 24px;
+  max-width: 70ch;
+  color: var(--ink-soft);
+}
+
+.review-key-form {
+  margin-bottom: 22px;
+}
+
+.review-summary-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+.review-list {
+  display: grid;
+  gap: 18px;
+}
+
+.review-item {
+  padding: 22px;
+}
+
+.review-item-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.review-item-head h3 {
+  margin: 0;
+  font-family: var(--display);
+  font-size: clamp(1.4rem, 2vw, 2rem);
+  letter-spacing: -0.03em;
+}
+
+.review-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 18px;
+  margin-bottom: 18px;
+}
+
+.review-meta-grid span {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(13, 95, 207, 0.72);
+}
+
+.review-meta-grid strong {
+  color: var(--ink-strong);
+  word-break: break-word;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
 .account-action {
   background: rgba(19, 25, 34, 0.05);
   color: var(--ink-strong);
@@ -2668,7 +2781,9 @@ code {
   .plan-panel,
   .premium-plan-options,
   .premium-grid,
-  .history-toolbar {
+  .history-toolbar,
+  .review-summary-row,
+  .review-meta-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2691,5 +2806,10 @@ code {
 
   .modal-close {
     justify-self: end;
+  }
+
+  .brand-copy small {
+    font-size: 0.58rem;
+    letter-spacing: 0.14em;
   }
 }
