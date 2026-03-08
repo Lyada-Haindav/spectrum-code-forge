@@ -85,6 +85,8 @@ final class GeminiClient {
             Never include self-corrections, re-checks, or repeated reasoning.
             Keep tests short and practical.
             Keep the answer practical, correct, and concise.
+            For Java coding-problem solutions, avoid top-level public classes unless the user explicitly asks for a specific filename.
+            Prefer judge-safe Java output that compiles without renaming the file first.
             """;
     }
 
@@ -118,6 +120,7 @@ final class GeminiClient {
             - Use short bullet items instead of long paragraphs.
             - Make the code look natural and problem-specific, not like a copied reference template.
             - Do not use obvious AI-style comments or repetitive naming patterns.
+            - For Java, do not rely on a named public top-level class unless the prompt explicitly requires one.
             """.formatted(
             nonEmptyOr(request.problemStatement(), "Not provided"),
             nonEmptyOr(request.constraints(), "Not provided"),
@@ -360,7 +363,7 @@ final class GeminiClient {
         response.put("complexity", normalizeComplexity(raw.get("complexity")));
         response.put("edgeCases", stringList(raw.get("edgeCases")));
         response.put("pseudocode", stringList(raw.get("pseudocode")));
-        response.put("code", stringValue(raw.get("code"), ""));
+        response.put("code", normalizeCodeForLanguage(stringValue(raw.get("code"), ""), request.primaryLanguage()));
         response.put("primaryLanguage", request.primaryLanguage());
         response.put("alternateImplementations", normalizeAlternateImplementations(raw.get("alternateImplementations"), request.primaryLanguage()));
         response.put("tests", normalizeTests(raw.get("tests")));
@@ -408,7 +411,7 @@ final class GeminiClient {
 
             Map<String, Object> item = MiniJson.asObject(entry, "Invalid alternate implementation.");
             String language = stringValue(item.get("language"), "");
-            String code = stringValue(item.get("code"), "");
+            String code = normalizeCodeForLanguage(stringValue(item.get("code"), ""), language);
 
             if (language.isBlank() || code.isBlank()) {
                 continue;
@@ -427,6 +430,21 @@ final class GeminiClient {
         }
 
         return items;
+    }
+
+    private String normalizeCodeForLanguage(String code, String language) {
+        if (code == null || code.isBlank()) {
+            return code == null ? "" : code;
+        }
+
+        if (!"java".equalsIgnoreCase(language == null ? "" : language.trim())) {
+            return code;
+        }
+
+        return code.replaceFirst(
+            "(?m)^(\\s*)public\\s+((?:final|abstract)\\s+)?class\\s+",
+            "$1$2class "
+        );
     }
 
     private List<Object> normalizeTests(Object value) {
