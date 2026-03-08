@@ -13,6 +13,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashMap;
@@ -31,6 +32,7 @@ final class AuthService {
     private static final int SALT_BYTES = 16;
     private static final int TOKEN_BYTES = 24;
     private static final int MIN_PASSWORD_LENGTH = 8;
+    private static final long RESET_TOKEN_MINUTES = 30;
 
     private final Path usersFile;
     private final SecureRandom secureRandom = new SecureRandom();
@@ -76,6 +78,8 @@ final class AuthService {
             false,
             verificationToken,
             Instant.now().toString(),
+            "",
+            "",
             ""
         );
         usersById.put(user.id(), user);
@@ -185,7 +189,9 @@ final class AuthService {
             normalized.emailVerified(),
             normalized.verificationToken(),
             normalized.verificationSentAt(),
-            normalized.emailVerifiedAt()
+            normalized.emailVerifiedAt(),
+            normalized.resetToken(),
+            normalized.resetSentAt()
         );
         usersById.put(updated.id(), updated);
         saveUsers();
@@ -222,7 +228,9 @@ final class AuthService {
             normalized.emailVerified(),
             normalized.verificationToken(),
             normalized.verificationSentAt(),
-            normalized.emailVerifiedAt()
+            normalized.emailVerifiedAt(),
+            normalized.resetToken(),
+            normalized.resetSentAt()
         );
         usersById.put(updated.id(), updated);
         saveUsers();
@@ -261,7 +269,9 @@ final class AuthService {
             true,
             "",
             matchedUser.verificationSentAt(),
-            Instant.now().toString()
+            Instant.now().toString(),
+            matchedUser.resetToken(),
+            matchedUser.resetSentAt()
         );
         usersById.put(updated.id(), updated);
         saveUsers();
@@ -293,11 +303,94 @@ final class AuthService {
             false,
             verificationToken,
             Instant.now().toString(),
-            normalized.emailVerifiedAt()
+            normalized.emailVerifiedAt(),
+            normalized.resetToken(),
+            normalized.resetSentAt()
         );
         usersById.put(updated.id(), updated);
         saveUsers();
         return new VerificationDispatch(toAuthUser(updated, freeDailyLimit), verificationToken);
+    }
+
+    synchronized Optional<PasswordResetDispatch> requestPasswordReset(String email, int freeDailyLimit) {
+        String normalizedEmail = normalizeEmail(email);
+        String userId = userIdByEmail.get(normalizedEmail);
+        if (userId == null) {
+            return Optional.empty();
+        }
+
+        StoredUser user = requireStoredUser(userId);
+        StoredUser normalized = normalizeUserState(user);
+        String resetToken = randomToken();
+        StoredUser updated = new StoredUser(
+            normalized.id(),
+            normalized.name(),
+            normalized.email(),
+            normalized.passwordHash(),
+            normalized.passwordSalt(),
+            normalized.createdAt(),
+            normalized.usageDate(),
+            normalized.dailyUsageCount(),
+            normalized.premium(),
+            normalized.premiumPlanCode(),
+            normalized.premiumPlanLabel(),
+            normalized.premiumExpiresAt(),
+            normalized.premiumActivatedAt(),
+            normalized.emailVerified(),
+            normalized.verificationToken(),
+            normalized.verificationSentAt(),
+            normalized.emailVerifiedAt(),
+            resetToken,
+            Instant.now().toString()
+        );
+        usersById.put(updated.id(), updated);
+        saveUsers();
+        return Optional.of(new PasswordResetDispatch(toAuthUser(updated, freeDailyLimit), resetToken));
+    }
+
+    synchronized AuthUser resetPassword(String token, String password, int freeDailyLimit) {
+        String normalizedToken = normalizeResetToken(token);
+        validatePassword(password);
+
+        StoredUser matchedUser = null;
+        for (StoredUser user : usersById.values()) {
+            if (!user.resetToken().isBlank() && normalizedToken.equals(user.resetToken())) {
+                matchedUser = user;
+                break;
+            }
+        }
+
+        if (matchedUser == null || resetTokenExpired(matchedUser)) {
+            throw new AppException(400, "This reset link is invalid or expired.");
+        }
+
+        StoredUser normalized = normalizeUserState(matchedUser);
+        PasswordHash hash = createPasswordHash(password);
+        StoredUser updated = new StoredUser(
+            normalized.id(),
+            normalized.name(),
+            normalized.email(),
+            hash.hash(),
+            hash.salt(),
+            normalized.createdAt(),
+            normalized.usageDate(),
+            normalized.dailyUsageCount(),
+            normalized.premium(),
+            normalized.premiumPlanCode(),
+            normalized.premiumPlanLabel(),
+            normalized.premiumExpiresAt(),
+            normalized.premiumActivatedAt(),
+            normalized.emailVerified(),
+            normalized.verificationToken(),
+            normalized.verificationSentAt(),
+            normalized.emailVerifiedAt(),
+            "",
+            ""
+        );
+        usersById.put(updated.id(), updated);
+        clearSessionsForUser(updated.id());
+        saveUsers();
+        return toAuthUser(updated, freeDailyLimit);
     }
 
     private synchronized void loadUsers() {
@@ -338,7 +431,9 @@ final class AuthService {
                     readBoolean(item, "emailVerified", true),
                     readString(item, "verificationToken"),
                     readString(item, "verificationSentAt"),
-                    readString(item, "emailVerifiedAt")
+                    readString(item, "emailVerifiedAt"),
+                    readString(item, "resetToken"),
+                    readString(item, "resetSentAt")
                 );
 
                 if (user.id().isBlank() || user.email().isBlank() || user.passwordHash().isBlank() || user.passwordSalt().isBlank()) {
@@ -374,6 +469,8 @@ final class AuthService {
             item.put("verificationToken", user.verificationToken());
             item.put("verificationSentAt", user.verificationSentAt());
             item.put("emailVerifiedAt", user.emailVerifiedAt());
+            item.put("resetToken", user.resetToken());
+            item.put("resetSentAt", user.resetSentAt());
             users.add(item);
         }
 
@@ -541,7 +638,9 @@ final class AuthService {
                 normalized.emailVerified(),
                 normalized.verificationToken(),
                 normalized.verificationSentAt(),
-                normalized.emailVerifiedAt()
+                normalized.emailVerifiedAt(),
+                normalized.resetToken(),
+                normalized.resetSentAt()
             );
             changed = true;
         }
@@ -565,7 +664,9 @@ final class AuthService {
                 normalized.emailVerified(),
                 normalized.verificationToken(),
                 normalized.verificationSentAt(),
-                normalized.emailVerifiedAt()
+                normalized.emailVerifiedAt(),
+                normalized.resetToken(),
+                normalized.resetSentAt()
             );
             changed = true;
         }
@@ -610,12 +711,36 @@ final class AuthService {
         }
     }
 
+    private boolean resetTokenExpired(StoredUser user) {
+        if (user.resetSentAt().isBlank()) {
+            return true;
+        }
+        try {
+            Instant sentAt = Instant.parse(user.resetSentAt());
+            return sentAt.plus(RESET_TOKEN_MINUTES, ChronoUnit.MINUTES).isBefore(Instant.now());
+        } catch (Exception ignored) {
+            return true;
+        }
+    }
+
     private String normalizeVerificationToken(String token) {
         String value = token == null ? "" : token.trim();
         if (value.isBlank()) {
             throw new AppException(400, "Verification token is required.");
         }
         return value;
+    }
+
+    private String normalizeResetToken(String token) {
+        String value = token == null ? "" : token.trim();
+        if (value.isBlank()) {
+            throw new AppException(400, "Reset token is required.");
+        }
+        return value;
+    }
+
+    private void clearSessionsForUser(String userId) {
+        sessions.entrySet().removeIf((entry) -> userId.equals(entry.getValue().userId()));
     }
 
     private String todayString() {
@@ -638,6 +763,9 @@ final class AuthService {
     record VerificationDispatch(AuthUser user, String verificationToken) {
     }
 
+    record PasswordResetDispatch(AuthUser user, String resetToken) {
+    }
+
     private record StoredUser(
         String id,
         String name,
@@ -655,7 +783,9 @@ final class AuthService {
         boolean emailVerified,
         String verificationToken,
         String verificationSentAt,
-        String emailVerifiedAt
+        String emailVerifiedAt,
+        String resetToken,
+        String resetSentAt
     ) {
     }
 }

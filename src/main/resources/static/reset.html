@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reset Password</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body class="builder-page home-page">
+    <div class="builder-glow builder-glow-coral"></div>
+    <div class="builder-glow builder-glow-cyan"></div>
+    <div class="builder-glow builder-glow-gold"></div>
+
+    <header class="builder-topbar">
+      <a class="brand-mark brand-mark-light" href="/">Solver</a>
+      <nav class="builder-nav">
+        <a href="/">Home</a>
+        <a href="/builder.html">Solver</a>
+      </nav>
+      <div class="topbar-actions">
+        <a class="hero-button hero-button-secondary" href="/">Back home</a>
+      </div>
+    </header>
+
+    <main class="builder-shell home-shell">
+      <section class="builder-panel home-flow-panel verify-panel reset-panel">
+        <div class="flow-copy">
+          <p class="eyebrow eyebrow-light">Password reset</p>
+          <h2 id="reset-title">Create a new password</h2>
+          <p id="reset-copy">
+            Use a strong password with at least 8 characters. Once saved, you will be signed in on this device.
+          </p>
+        </div>
+
+        <div id="reset-status" class="inline-message">Checking your reset link.</div>
+
+        <form id="reset-form" class="auth-form reset-form" hidden>
+          <label class="field">
+            <span>New password</span>
+            <div class="input-shell">
+              <input id="reset-password" name="password" type="password" placeholder="Minimum 8 characters" required />
+              <button class="field-toggle" type="button" data-reset-toggle="reset-password">Show</button>
+            </div>
+          </label>
+          <label class="field">
+            <span>Confirm password</span>
+            <div class="input-shell">
+              <input id="reset-confirm-password" name="confirmPassword" type="password" placeholder="Repeat the new password" required />
+              <button class="field-toggle" type="button" data-reset-toggle="reset-confirm-password">Show</button>
+            </div>
+          </label>
+          <button id="reset-submit" class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Secure account</span>
+            <strong>Update password</strong>
+          </button>
+        </form>
+
+        <div class="hero-actions">
+          <a class="hero-button hero-button-primary" href="/builder.html">Go to workspace</a>
+          <a class="hero-button hero-button-secondary" href="/">Return home</a>
+        </div>
+      </section>
+    </main>
+
+    <script src="/reset.js"></script>
+  </body>
+</html>

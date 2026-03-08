@@ -1943,6 +1943,29 @@ code {
   gap: 14px;
 }
 
+.auth-link-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.auth-link-row-center {
+  justify-content: center;
+}
+
+.auth-text-button {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #6aa9ff;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auth-text-button:hover,
+.auth-text-button:focus-visible {
+  color: #9ac4ff;
+}
+
 .input-shell {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2023,6 +2046,14 @@ code {
   background: linear-gradient(135deg, rgba(255, 111, 97, 0.18), rgba(255, 186, 45, 0.12));
   border: 1px solid rgba(255, 111, 97, 0.16);
   line-height: 1.55;
+}
+
+.reset-panel {
+  max-width: 720px;
+}
+
+.reset-form {
+  max-width: 480px;
 }
 
 .premium-modal {

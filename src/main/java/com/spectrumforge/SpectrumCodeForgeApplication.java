@@ -52,6 +52,8 @@ public final class SpectrumCodeForgeApplication {
         server.createContext("/api/auth/session", this::handleSession);
         server.createContext("/api/auth/signup", this::handleSignup);
         server.createContext("/api/auth/login", this::handleLogin);
+        server.createContext("/api/auth/forgot-password", this::handleForgotPassword);
+        server.createContext("/api/auth/reset-password", this::handleResetPassword);
         server.createContext("/api/auth/verify", this::handleVerifyEmail);
         server.createContext("/api/auth/resend-verification", this::handleResendVerification);
         server.createContext("/api/auth/logout", this::handleLogout);
@@ -153,6 +155,45 @@ public final class SpectrumCodeForgeApplication {
             );
             authService.startSession(exchange, user);
             sendJson(exchange, 200, authService.sessionPayload(Optional.of(user)));
+        } catch (AppException error) {
+            sendError(exchange, error);
+        }
+    }
+
+    private void handleForgotPassword(HttpExchange exchange) throws IOException {
+        try {
+            requireMethod(exchange, "POST");
+            Map<String, Object> payload = readJsonBody(exchange);
+            String email = readString(payload, "email");
+            Optional<AuthService.PasswordResetDispatch> dispatch = authService.requestPasswordReset(email, config.freeDailyLimit());
+            if (dispatch.isPresent()) {
+                AuthService.PasswordResetDispatch result = dispatch.orElseThrow();
+                emailService.sendPasswordResetEmail(result.user(), result.resetToken(), config);
+            }
+
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("accepted", true);
+            response.put("message", "If that email exists, reset instructions are on the way.");
+            sendJson(exchange, 200, response);
+        } catch (AppException error) {
+            sendError(exchange, error);
+        }
+    }
+
+    private void handleResetPassword(HttpExchange exchange) throws IOException {
+        try {
+            requireMethod(exchange, "POST");
+            Map<String, Object> payload = readJsonBody(exchange);
+            AuthUser user = authService.resetPassword(
+                readString(payload, "token"),
+                readString(payload, "password"),
+                config.freeDailyLimit()
+            );
+            authService.startSession(exchange, user);
+
+            Map<String, Object> response = authService.sessionPayload(Optional.of(user));
+            response.put("passwordReset", true);
+            sendJson(exchange, 200, response);
         } catch (AppException error) {
             sendError(exchange, error);
         }

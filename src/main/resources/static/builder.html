@@ -339,10 +339,28 @@
             </div>
             <small class="field-note">Use the password linked to your account.</small>
           </label>
+          <div class="auth-link-row">
+            <button class="auth-text-button" type="button" data-auth-forgot>Password forgotten?</button>
+          </div>
           <button class="primary-button auth-submit" type="submit">
             <span class="auth-submit-kicker">Continue</span>
             <strong>Sign in</strong>
           </button>
+        </form>
+
+        <form id="forgot-form" class="auth-form" hidden>
+          <label class="field">
+            <span>Email</span>
+            <input id="forgot-email" name="email" type="email" placeholder="you@example.com" required />
+          </label>
+          <p class="field-note">We will email you a secure reset link if that account exists.</p>
+          <button class="primary-button auth-submit" type="submit">
+            <span class="auth-submit-kicker">Reset access</span>
+            <strong>Send reset link</strong>
+          </button>
+          <div class="auth-link-row auth-link-row-center">
+            <button class="auth-text-button" type="button" data-auth-back-signin>Back to sign in</button>
+          </div>
         </form>
 
         <form id="signup-form" class="auth-form" hidden>

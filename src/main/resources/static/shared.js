@@ -5,9 +5,12 @@ const authTitle = document.querySelector("#auth-title");
 const authCopy = document.querySelector("#auth-copy");
 const authKicker = document.querySelector("#auth-kicker");
 const signInForm = document.querySelector("#signin-form");
+const forgotForm = document.querySelector("#forgot-form");
 const signUpForm = document.querySelector("#signup-form");
 const authTabs = document.querySelectorAll("[data-auth-view]");
 const authOpenButtons = document.querySelectorAll("[data-auth-open]");
+const forgotPasswordButtons = document.querySelectorAll("[data-auth-forgot]");
+const authBackSigninButtons = document.querySelectorAll("[data-auth-back-signin]");
 const authGuestBlocks = document.querySelectorAll("[data-auth-guest]");
 const authUserBlocks = document.querySelectorAll("[data-auth-user]");
 const authNameFields = document.querySelectorAll("[data-auth-name]");
@@ -53,8 +56,20 @@ function bootstrapAuth() {
     signInForm.addEventListener("submit", (event) => submitAuthForm(event, "signin"));
   }
 
+  if (forgotForm) {
+    forgotForm.addEventListener("submit", submitForgotPasswordForm);
+  }
+
   if (signUpForm) {
     signUpForm.addEventListener("submit", (event) => submitAuthForm(event, "signup"));
+  }
+
+  for (const button of forgotPasswordButtons) {
+    button.addEventListener("click", () => setAuthView("forgot"));
+  }
+
+  for (const button of authBackSigninButtons) {
+    button.addEventListener("click", () => setAuthView("signin"));
   }
 
   for (const button of logoutButtons) {
@@ -164,6 +179,51 @@ async function submitAuthForm(event, mode) {
   }
 }
 
+async function submitForgotPasswordForm(event) {
+  event.preventDefault();
+  if (authState.isSubmitting || !forgotForm) {
+    return;
+  }
+
+  clearAuthMessage();
+  const formData = new FormData(forgotForm);
+  const email = String(formData.get("email") || "").trim();
+  if (!email) {
+    showAuthMessage("Enter your email first.");
+    return;
+  }
+
+  setAuthSubmitting(true);
+
+  try {
+    const response = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email })
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "Unable to send the reset link right now.");
+    }
+
+    forgotForm.reset();
+    if (signInForm) {
+      const signInEmail = signInForm.querySelector('input[name="email"]');
+      if (signInEmail instanceof HTMLInputElement) {
+        signInEmail.value = email;
+      }
+    }
+    setAuthView("signin");
+    showAuthMessage(result.message || "If that email exists, reset instructions are on the way.");
+  } catch (error) {
+    showAuthMessage(error.message || "Unable to send the reset link right now.");
+  } finally {
+    setAuthSubmitting(false);
+  }
+}
+
 async function handleLogout() {
   clearAuthMessage();
 
@@ -247,7 +307,13 @@ function closeAuthModal() {
 }
 
 function setAuthView(view) {
-  authState.view = view === "signup" ? "signup" : "signin";
+  if (view === "signup") {
+    authState.view = "signup";
+  } else if (view === "forgot") {
+    authState.view = "forgot";
+  } else {
+    authState.view = "signin";
+  }
 
   for (const tab of authTabs) {
     tab.classList.toggle("is-active", tab.dataset.authView === authState.view);
@@ -255,6 +321,10 @@ function setAuthView(view) {
 
   if (signInForm) {
     signInForm.hidden = authState.view !== "signin";
+  }
+
+  if (forgotForm) {
+    forgotForm.hidden = authState.view !== "forgot";
   }
 
   if (signUpForm) {
@@ -266,6 +336,10 @@ function setAuthView(view) {
       authKicker.textContent = "New account";
       authTitle.textContent = "Create your study account";
       authCopy.textContent = "Save coding chats, pin strong answers, and come back to them anytime.";
+    } else if (authState.view === "forgot") {
+      authKicker.textContent = "Reset access";
+      authTitle.textContent = "Recover your password";
+      authCopy.textContent = "Enter the email linked to your account and we will send a secure reset link.";
     } else {
       authKicker.textContent = "Welcome back";
       authTitle.textContent = "Sign in and continue";
