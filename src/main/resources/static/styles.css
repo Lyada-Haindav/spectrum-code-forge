@@ -1854,16 +1854,22 @@ code {
   padding: 18px;
   background: rgba(5, 10, 19, 0.72);
   backdrop-filter: blur(10px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .auth-modal {
   position: relative;
   width: min(100%, 460px);
+  max-height: calc(100dvh - 36px);
   padding: 24px;
   border-radius: 28px;
   background: linear-gradient(180deg, rgba(13, 23, 48, 0.96), rgba(9, 17, 29, 0.96));
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: var(--shadow-dark);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .auth-modal-head {
@@ -2797,7 +2803,10 @@ code {
   }
 
   .auth-modal {
+    width: min(100%, 100%);
+    max-height: calc(100dvh - 24px);
     padding: 18px;
+    border-radius: 24px;
   }
 
   .auth-modal-head {
@@ -2806,6 +2815,11 @@ code {
 
   .modal-close {
     justify-self: end;
+  }
+
+  .modal-backdrop {
+    place-items: start center;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
   }
 
   .brand-copy small {
