@@ -226,6 +226,7 @@ async function submitForgotPasswordForm(event) {
 
 async function handleLogout() {
   clearAuthMessage();
+  const onWorkspacePage = window.location.pathname === "/workspace" || window.location.pathname === "/builder.html";
 
   try {
     const response = await fetch("/api/auth/logout", {
@@ -237,6 +238,9 @@ async function handleLogout() {
     }
 
     setSession(result.user || null);
+    if (onWorkspacePage) {
+      window.location.href = "/";
+    }
   } catch (error) {
     showAuthMessage(error.message || "Unable to sign out.");
   }

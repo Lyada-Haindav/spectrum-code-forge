@@ -16,6 +16,7 @@ const inputSummary = document.querySelector("#input-summary");
 const planTitle = document.querySelector("#plan-title");
 const planCopy = document.querySelector("#plan-copy");
 const planBadge = document.querySelector("#plan-badge");
+const planPanel = document.querySelector(".plan-panel");
 const upgradeButton = document.querySelector("#upgrade-button");
 const helperChips = document.querySelectorAll("[data-helper]");
 const historyGuest = document.querySelector("#history-guest");
@@ -293,11 +294,12 @@ async function refreshHistory() {
 }
 
 function renderPlanState() {
-  if (!planTitle || !planCopy || !planBadge || !upgradeButton) {
+  if (!planTitle || !planCopy || !planBadge || !upgradeButton || !planPanel) {
     return;
   }
 
   if (!state.user) {
+    planPanel.hidden = true;
     planTitle.textContent = "Free access";
     planCopy.textContent = "Sign in to generate up to 6 solutions per day, or upgrade for unlimited solves.";
     planBadge.textContent = "Guest";
@@ -305,6 +307,8 @@ function renderPlanState() {
     upgradeButton.textContent = "Sign in to upgrade";
     return;
   }
+
+  planPanel.hidden = false;
 
   if (!state.user.emailVerified) {
     planTitle.textContent = "Email verification pending";
