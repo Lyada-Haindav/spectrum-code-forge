@@ -8,6 +8,9 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,26 +82,44 @@ final class EmailService {
         sendEmail(user.name(), user.email(), subject, text, html, config, "Unable to send the password reset email right now.");
     }
 
-    boolean sendPremiumSuccessEmail(AuthUser user, String transactionReference, int amountInr, AppConfig config) {
+    boolean sendPremiumSuccessEmail(
+        AuthUser user,
+        String transactionReference,
+        String planLabel,
+        int amountInr,
+        String expiresAt,
+        AppConfig config
+    ) {
         if (!config.emailDeliveryEnabled()) {
             return false;
         }
 
+        String formattedExpiry = formatDate(expiresAt);
         String subject = "Premium activated successfully";
-        String text = "Premium is active on your account. Amount: INR %d. Reference: %s.".formatted(amountInr, transactionReference);
+        String text = "Premium is active on your account. Plan: %s. Amount: INR %d. Reference: %s. Active until: %s."
+            .formatted(planLabel, amountInr, transactionReference, formattedExpiry);
         String html = """
             <div style="font-family:Arial,sans-serif;line-height:1.6;color:#14213d">
               <p style="font-size:14px;letter-spacing:0.18em;text-transform:uppercase;color:#f59e0b;margin-bottom:12px">Premium active</p>
-              <h1 style="margin:0 0 16px;font-size:28px">Unlimited solves unlocked</h1>
+              <h1 style="margin:0 0 16px;font-size:28px">%s unlocked</h1>
               <p style="margin:0 0 16px">Hi %s,</p>
-              <p style="margin:0 0 18px">Your premium upgrade is active now. This account can use the solver without the daily free limit.</p>
+              <p style="margin:0 0 18px">Your paid plan is active now. This account can use the solver without the daily free limit until the end of the subscription.</p>
               <div style="background:#f8fafc;border:1px solid #dbeafe;border-radius:16px;padding:16px 18px;margin:0 0 20px">
+                <p style="margin:0 0 8px"><strong>Plan:</strong> %s</p>
                 <p style="margin:0 0 8px"><strong>Amount:</strong> INR %d</p>
-                <p style="margin:0"><strong>Reference:</strong> %s</p>
+                <p style="margin:0 0 8px"><strong>Reference:</strong> %s</p>
+                <p style="margin:0"><strong>Active until:</strong> %s</p>
               </div>
               <p style="margin:0">Open the workspace and continue solving.</p>
             </div>
-            """.formatted(escapeHtml(user.name()), amountInr, escapeHtml(transactionReference));
+            """.formatted(
+                escapeHtml(planLabel),
+                escapeHtml(user.name()),
+                escapeHtml(planLabel),
+                amountInr,
+                escapeHtml(transactionReference),
+                escapeHtml(formattedExpiry)
+            );
 
         sendEmail(user.name(), user.email(), subject, text, html, config, "Unable to send the premium confirmation email right now.");
         return true;
@@ -163,5 +184,18 @@ final class EmailService {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#39;");
+    }
+
+    private String formatDate(String rawInstant) {
+        if (rawInstant == null || rawInstant.isBlank()) {
+            return "your plan end date";
+        }
+        try {
+            return Instant.parse(rawInstant)
+                .atZone(ZoneId.systemDefault())
+                .format(DateTimeFormatter.ofPattern("d MMM uuuu, h:mm a"));
+        } catch (Exception ignored) {
+            return rawInstant;
+        }
     }
 }

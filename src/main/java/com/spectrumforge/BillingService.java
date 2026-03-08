@@ -32,18 +32,22 @@ final class BillingService {
             throw new AppException(503, "Premium checkout is unavailable right now.");
         }
 
-        String note = "Spectrum Premium " + user.id().substring(0, Math.min(8, user.id().length()));
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("premium", user.premium());
-        payload.put("priceInr", config.premiumPriceInr());
         payload.put("upiId", config.premiumUpiId());
         payload.put("upiName", config.premiumUpiName());
-        payload.put("note", note);
-        payload.put("upiUrl", buildUpiUrl(config, note));
+        payload.put("plans", buildCheckoutPlans(user, config));
+        payload.put("defaultPlanCode", config.defaultPremiumPlan().code());
         return payload;
     }
 
-    synchronized Map<String, Object> confirmPremium(AuthUser user, AppConfig config, String transactionReference, AuthService authService) {
+    synchronized Map<String, Object> confirmPremium(
+        AuthUser user,
+        AppConfig config,
+        String planCode,
+        String transactionReference,
+        AuthService authService
+    ) {
         if (!config.premiumCheckoutEnabled()) {
             throw new AppException(503, "Premium checkout is unavailable right now.");
         }
@@ -55,6 +59,7 @@ final class BillingService {
             return payload;
         }
 
+        PremiumPlan plan = config.premiumPlan(planCode);
         String normalizedReference = normalizeReference(transactionReference);
         boolean exists = payments.stream()
             .anyMatch(payment -> payment.transactionReference().equalsIgnoreCase(normalizedReference));
@@ -62,14 +67,25 @@ final class BillingService {
             throw new AppException(409, "This payment reference is already linked to another premium account.");
         }
 
-        AuthUser upgradedUser = authService.activatePremium(user.id(), config.freeDailyLimit());
+        Instant activatedAt = Instant.now();
+        String expiresAt = plan.expiresAtFrom(activatedAt).toString();
+        AuthUser upgradedUser = authService.activatePremium(
+            user.id(),
+            plan.code(),
+            plan.label(),
+            expiresAt,
+            config.freeDailyLimit()
+        );
         StoredPayment payment = new StoredPayment(
             UUID.randomUUID().toString(),
             user.id(),
-            Instant.now().toString(),
+            activatedAt.toString(),
             normalizedReference,
-            config.premiumPriceInr(),
+            plan.code(),
+            plan.label(),
+            plan.priceInr(),
             config.premiumUpiId(),
+            expiresAt,
             "completed"
         );
         payments.add(payment);
@@ -80,19 +96,39 @@ final class BillingService {
         payload.put("payment", Map.of(
             "id", payment.id(),
             "reference", payment.transactionReference(),
+            "planCode", payment.planCode(),
+            "planLabel", payment.planLabel(),
             "amountInr", payment.amountInr(),
+            "expiresAt", payment.expiresAt(),
             "createdAt", payment.createdAt()
         ));
         return payload;
     }
 
-    private String buildUpiUrl(AppConfig config, String note) {
+    private List<Object> buildCheckoutPlans(AuthUser user, AppConfig config) {
+        List<Object> plans = new ArrayList<>();
+        for (PremiumPlan plan : config.enabledPremiumPlans()) {
+            String note = buildNote(user, plan);
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.putAll(plan.toMap());
+            item.put("note", note);
+            item.put("upiUrl", buildUpiUrl(config, plan, note));
+            plans.add(item);
+        }
+        return plans;
+    }
+
+    private String buildUpiUrl(AppConfig config, PremiumPlan plan, String note) {
         return "upi://pay"
             + "?pa=" + encode(config.premiumUpiId())
             + "&pn=" + encode(config.premiumUpiName())
-            + "&am=" + encode(String.valueOf(config.premiumPriceInr()))
+            + "&am=" + encode(String.valueOf(plan.priceInr()))
             + "&cu=INR"
             + "&tn=" + encode(note);
+    }
+
+    private String buildNote(AuthUser user, PremiumPlan plan) {
+        return "Spectrum " + plan.label() + " " + user.id().substring(0, Math.min(8, user.id().length()));
     }
 
     private String encode(String value) {
@@ -130,7 +166,10 @@ final class BillingService {
                 String userId = readString(item, "userId");
                 String createdAt = readString(item, "createdAt");
                 String transactionReference = readString(item, "transactionReference");
+                String planCode = readString(item, "planCode");
+                String planLabel = readString(item, "planLabel");
                 String upiId = readString(item, "upiId");
+                String expiresAt = readString(item, "expiresAt");
                 String status = readString(item, "status");
                 int amountInr = readInt(item, "amountInr");
 
@@ -138,7 +177,18 @@ final class BillingService {
                     continue;
                 }
 
-                payments.add(new StoredPayment(id, userId, createdAt, transactionReference, amountInr, upiId, status));
+                payments.add(new StoredPayment(
+                    id,
+                    userId,
+                    createdAt,
+                    transactionReference,
+                    planCode,
+                    planLabel,
+                    amountInr,
+                    upiId,
+                    expiresAt,
+                    status
+                ));
             }
         } catch (IOException error) {
             throw new AppException(500, "Unable to read premium billing data.");
@@ -153,8 +203,11 @@ final class BillingService {
             item.put("userId", payment.userId());
             item.put("createdAt", payment.createdAt());
             item.put("transactionReference", payment.transactionReference());
+            item.put("planCode", payment.planCode());
+            item.put("planLabel", payment.planLabel());
             item.put("amountInr", payment.amountInr());
             item.put("upiId", payment.upiId());
+            item.put("expiresAt", payment.expiresAt());
             item.put("status", payment.status());
             serializedPayments.add(item);
         }
@@ -203,8 +256,11 @@ final class BillingService {
         String userId,
         String createdAt,
         String transactionReference,
+        String planCode,
+        String planLabel,
         int amountInr,
         String upiId,
+        String expiresAt,
         String status
     ) {
     }

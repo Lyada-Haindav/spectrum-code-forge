@@ -76,7 +76,7 @@ public final class SpectrumCodeForgeApplication {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("ready", config.configured());
             payload.put("freeDailyLimit", config.freeDailyLimit());
-            payload.put("premiumPriceInr", config.premiumPriceInr());
+            payload.put("premiumPlans", config.enabledPremiumPlans().stream().map(PremiumPlan::toMap).toList());
             payload.put("premiumCheckoutEnabled", config.premiumCheckoutEnabled());
             sendJson(exchange, 200, payload);
         } catch (AppException error) {
@@ -204,22 +204,32 @@ public final class SpectrumCodeForgeApplication {
             requireMethod(exchange, "POST");
             AuthUser user = requireVerifiedUser(exchange);
             Map<String, Object> payload = readJsonBody(exchange);
+            String planCode = readString(payload, "planCode");
             String transactionReference = readString(payload, "transactionReference");
-            Map<String, Object> response = billingService.confirmPremium(user, config, transactionReference, authService);
+            Map<String, Object> response = billingService.confirmPremium(user, config, planCode, transactionReference, authService);
 
             boolean alreadyPremium = readBoolean(response, "alreadyPremium");
             if (!alreadyPremium) {
                 AuthUser refreshedUser = authService.currentUser(exchange, config.freeDailyLimit()).orElse(user);
                 String referenceForEmail = transactionReference;
+                String planLabelForEmail = "Premium";
+                String expiresAtForEmail = "";
+                int amountForEmail = 0;
                 Object paymentValue = response.get("payment");
                 if (paymentValue instanceof Map<?, ?> paymentMap) {
-                    referenceForEmail = readString(MiniJson.asObject(paymentMap, "Invalid payment response."), "reference");
+                    Map<String, Object> payment = MiniJson.asObject(paymentMap, "Invalid payment response.");
+                    referenceForEmail = readString(payment, "reference");
+                    planLabelForEmail = readString(payment, "planLabel");
+                    expiresAtForEmail = readString(payment, "expiresAt");
+                    amountForEmail = readInt(payment, "amountInr");
                 }
                 try {
                     boolean premiumEmailSent = emailService.sendPremiumSuccessEmail(
                         refreshedUser,
                         referenceForEmail,
-                        config.premiumPriceInr(),
+                        planLabelForEmail,
+                        amountForEmail,
+                        expiresAtForEmail,
                         config
                     );
                     response.put("premiumEmailSent", premiumEmailSent);
@@ -400,6 +410,21 @@ public final class SpectrumCodeForgeApplication {
             return bool;
         }
         return value != null && "true".equalsIgnoreCase(String.valueOf(value).trim());
+    }
+
+    private int readInt(Map<String, Object> payload, String key) {
+        Object value = payload.get(key);
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        if (value == null) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
     }
 
     private void sendJson(HttpExchange exchange, int statusCode, Object payload) throws IOException {

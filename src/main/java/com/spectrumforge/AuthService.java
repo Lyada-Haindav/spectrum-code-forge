@@ -70,6 +70,9 @@ final class AuthService {
             0,
             false,
             "",
+            "",
+            "",
+            "",
             false,
             verificationToken,
             Instant.now().toString(),
@@ -93,7 +96,7 @@ final class AuthService {
             throw new AppException(401, "Invalid email or password.");
         }
 
-        return toAuthUser(resetUsageWindow(user), freeDailyLimit);
+        return toAuthUser(normalizeUserState(user), freeDailyLimit);
     }
 
     Optional<AuthUser> currentUser(HttpExchange exchange, int freeDailyLimit) {
@@ -113,7 +116,7 @@ final class AuthService {
                 sessions.remove(token);
                 return Optional.empty();
             }
-            return Optional.of(toAuthUser(resetUsageWindow(user), freeDailyLimit));
+            return Optional.of(toAuthUser(normalizeUserState(user), freeDailyLimit));
         }
     }
 
@@ -147,7 +150,7 @@ final class AuthService {
 
     synchronized void ensureWithinDailyLimit(String userId, int freeDailyLimit) {
         StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = resetUsageWindow(user);
+        StoredUser normalized = normalizeUserState(user);
         if (!normalized.premium() && normalized.dailyUsageCount() >= freeDailyLimit) {
             throw new AppException(403, dailyLimitExceededMessage(freeDailyLimit));
         }
@@ -155,7 +158,7 @@ final class AuthService {
 
     synchronized AuthUser recordSuccessfulGenerate(String userId, int freeDailyLimit) {
         StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = resetUsageWindow(user);
+        StoredUser normalized = normalizeUserState(user);
 
         if (normalized.premium()) {
             return toAuthUser(normalized, freeDailyLimit);
@@ -175,6 +178,9 @@ final class AuthService {
             todayString(),
             normalized.dailyUsageCount() + 1,
             false,
+            "",
+            "",
+            "",
             normalized.premiumActivatedAt(),
             normalized.emailVerified(),
             normalized.verificationToken(),
@@ -186,9 +192,15 @@ final class AuthService {
         return toAuthUser(updated, freeDailyLimit);
     }
 
-    synchronized AuthUser activatePremium(String userId, int freeDailyLimit) {
+    synchronized AuthUser activatePremium(
+        String userId,
+        String premiumPlanCode,
+        String premiumPlanLabel,
+        String premiumExpiresAt,
+        int freeDailyLimit
+    ) {
         StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = resetUsageWindow(user);
+        StoredUser normalized = normalizeUserState(user);
         if (normalized.premium()) {
             return toAuthUser(normalized, freeDailyLimit);
         }
@@ -203,6 +215,9 @@ final class AuthService {
             normalized.usageDate(),
             normalized.dailyUsageCount(),
             true,
+            premiumPlanCode,
+            premiumPlanLabel,
+            premiumExpiresAt,
             Instant.now().toString(),
             normalized.emailVerified(),
             normalized.verificationToken(),
@@ -239,6 +254,9 @@ final class AuthService {
             matchedUser.usageDate(),
             matchedUser.dailyUsageCount(),
             matchedUser.premium(),
+            matchedUser.premiumPlanCode(),
+            matchedUser.premiumPlanLabel(),
+            matchedUser.premiumExpiresAt(),
             matchedUser.premiumActivatedAt(),
             true,
             "",
@@ -252,7 +270,7 @@ final class AuthService {
 
     synchronized VerificationDispatch resendVerification(String userId, int freeDailyLimit) {
         StoredUser user = requireStoredUser(userId);
-        StoredUser normalized = resetUsageWindow(user);
+        StoredUser normalized = normalizeUserState(user);
         if (normalized.emailVerified()) {
             throw new AppException(409, "Email is already verified.");
         }
@@ -268,6 +286,9 @@ final class AuthService {
             normalized.usageDate(),
             normalized.dailyUsageCount(),
             normalized.premium(),
+            normalized.premiumPlanCode(),
+            normalized.premiumPlanLabel(),
+            normalized.premiumExpiresAt(),
             normalized.premiumActivatedAt(),
             false,
             verificationToken,
@@ -310,6 +331,9 @@ final class AuthService {
                     readString(item, "usageDate"),
                     readInt(item, "dailyUsageCount"),
                     readBoolean(item, "premium"),
+                    readString(item, "premiumPlanCode"),
+                    readString(item, "premiumPlanLabel"),
+                    readString(item, "premiumExpiresAt"),
                     readString(item, "premiumActivatedAt"),
                     readBoolean(item, "emailVerified", true),
                     readString(item, "verificationToken"),
@@ -342,6 +366,9 @@ final class AuthService {
             item.put("usageDate", user.usageDate());
             item.put("dailyUsageCount", user.dailyUsageCount());
             item.put("premium", user.premium());
+            item.put("premiumPlanCode", user.premiumPlanCode());
+            item.put("premiumPlanLabel", user.premiumPlanLabel());
+            item.put("premiumExpiresAt", user.premiumExpiresAt());
             item.put("premiumActivatedAt", user.premiumActivatedAt());
             item.put("emailVerified", user.emailVerified());
             item.put("verificationToken", user.verificationToken());
@@ -492,31 +519,62 @@ final class AuthService {
         return user;
     }
 
-    private StoredUser resetUsageWindow(StoredUser user) {
-        String today = todayString();
-        if (today.equals(user.usageDate())) {
-            return user;
+    private StoredUser normalizeUserState(StoredUser user) {
+        StoredUser normalized = user;
+        boolean changed = false;
+
+        if (subscriptionExpired(normalized)) {
+            normalized = new StoredUser(
+                normalized.id(),
+                normalized.name(),
+                normalized.email(),
+                normalized.passwordHash(),
+                normalized.passwordSalt(),
+                normalized.createdAt(),
+                normalized.usageDate(),
+                normalized.dailyUsageCount(),
+                false,
+                "",
+                "",
+                "",
+                "",
+                normalized.emailVerified(),
+                normalized.verificationToken(),
+                normalized.verificationSentAt(),
+                normalized.emailVerifiedAt()
+            );
+            changed = true;
         }
 
-        StoredUser updated = new StoredUser(
-            user.id(),
-            user.name(),
-            user.email(),
-            user.passwordHash(),
-            user.passwordSalt(),
-            user.createdAt(),
-            today,
-            0,
-            user.premium(),
-            user.premiumActivatedAt(),
-            user.emailVerified(),
-            user.verificationToken(),
-            user.verificationSentAt(),
-            user.emailVerifiedAt()
-        );
-        usersById.put(updated.id(), updated);
-        saveUsers();
-        return updated;
+        String today = todayString();
+        if (!today.equals(normalized.usageDate())) {
+            normalized = new StoredUser(
+                normalized.id(),
+                normalized.name(),
+                normalized.email(),
+                normalized.passwordHash(),
+                normalized.passwordSalt(),
+                normalized.createdAt(),
+                today,
+                0,
+                normalized.premium(),
+                normalized.premiumPlanCode(),
+                normalized.premiumPlanLabel(),
+                normalized.premiumExpiresAt(),
+                normalized.premiumActivatedAt(),
+                normalized.emailVerified(),
+                normalized.verificationToken(),
+                normalized.verificationSentAt(),
+                normalized.emailVerifiedAt()
+            );
+            changed = true;
+        }
+
+        if (changed) {
+            usersById.put(normalized.id(), normalized);
+            saveUsers();
+        }
+        return normalized;
     }
 
     private AuthUser toAuthUser(StoredUser user, int freeDailyLimit) {
@@ -528,11 +586,28 @@ final class AuthService {
             user.email(),
             user.emailVerified(),
             user.premium(),
+            user.premiumPlanCode(),
+            user.premiumPlanLabel(),
+            user.premiumExpiresAt(),
             freeDailyLimit,
             used,
             remaining,
             user.emailVerified() && (user.premium() || remaining > 0)
         );
+    }
+
+    private boolean subscriptionExpired(StoredUser user) {
+        if (!user.premium()) {
+            return false;
+        }
+        if (user.premiumExpiresAt().isBlank()) {
+            return false;
+        }
+        try {
+            return !Instant.parse(user.premiumExpiresAt()).isAfter(Instant.now());
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     private String normalizeVerificationToken(String token) {
@@ -573,6 +648,9 @@ final class AuthService {
         String usageDate,
         int dailyUsageCount,
         boolean premium,
+        String premiumPlanCode,
+        String premiumPlanLabel,
+        String premiumExpiresAt,
         String premiumActivatedAt,
         boolean emailVerified,
         String verificationToken,

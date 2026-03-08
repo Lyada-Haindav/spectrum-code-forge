@@ -249,9 +249,9 @@
         <div class="auth-modal-head premium-modal-head">
           <div class="premium-modal-copy">
             <p class="auth-kicker">Premium access</p>
-            <h2 class="auth-title">Unlimited daily solves</h2>
+            <h2 class="auth-title">Choose your premium plan</h2>
             <p class="auth-copy">
-              Pay once with UPI, then enter the payment reference to unlock premium on this account.
+              Pick weekly, monthly, or yearly access. After payment, enter the UTR to activate the plan on this account.
             </p>
           </div>
           <button id="premium-close" class="modal-close" type="button" aria-label="Close premium panel">
@@ -261,13 +261,20 @@
 
         <div id="premium-message" class="inline-message" hidden></div>
 
+        <div id="premium-plan-options" class="premium-plan-options"></div>
+
         <div class="premium-grid">
           <article class="premium-card">
-            <span>Price</span>
-            <strong id="premium-price">INR 299</strong>
-            <p>Unlimited daily solver access for this account.</p>
+            <span>Selected plan</span>
+            <strong id="premium-plan-label">Monthly plan</strong>
+            <p id="premium-plan-copy">Unlimited daily solver access while this plan stays active.</p>
           </article>
           <article class="premium-card">
+            <span>Amount</span>
+            <strong id="premium-price">INR 399</strong>
+            <p id="premium-duration">Use any UPI app to complete the payment.</p>
+          </article>
+          <article class="premium-card premium-card-wide">
             <span>UPI ID</span>
             <strong id="premium-upi-id">-</strong>
             <p id="premium-note">Use any UPI app to complete the payment.</p>

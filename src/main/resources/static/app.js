@@ -30,7 +30,10 @@ const emptyStateCopy = document.querySelector("#empty-state-copy");
 const premiumModal = document.querySelector("#premium-modal");
 const premiumCloseButton = document.querySelector("#premium-close");
 const premiumMessage = document.querySelector("#premium-message");
+const premiumPlanOptions = document.querySelector("#premium-plan-options");
+const premiumPlanLabel = document.querySelector("#premium-plan-label");
 const premiumPrice = document.querySelector("#premium-price");
+const premiumDuration = document.querySelector("#premium-duration");
 const premiumUpiId = document.querySelector("#premium-upi-id");
 const premiumNote = document.querySelector("#premium-note");
 const premiumPayLink = document.querySelector("#premium-pay-link");
@@ -88,6 +91,7 @@ const state = {
   loadingStageIndex: 0,
   loadingTimer: null,
   billingCheckout: null,
+  selectedPremiumPlanCode: "",
   isPremiumSubmitting: false
 };
 
@@ -311,9 +315,13 @@ function renderPlanState() {
   }
 
   if (state.user.premium) {
-    planTitle.textContent = "Premium access";
-    planCopy.textContent = "Unlimited daily solves are active for this account.";
-    planBadge.textContent = "Unlimited";
+    const premiumLabel = state.user.premiumPlanLabel || "Premium access";
+    const premiumUntil = formatDate(state.user.premiumExpiresAt);
+    planTitle.textContent = premiumLabel;
+    planCopy.textContent = premiumUntil
+      ? `Unlimited daily solves are active until ${premiumUntil}.`
+      : "Unlimited daily solves are active for this account.";
+    planBadge.textContent = premiumUntil ? `Active until ${premiumUntil}` : "Unlimited";
     upgradeButton.hidden = true;
     return;
   }
@@ -321,10 +329,10 @@ function renderPlanState() {
   const dailyLimit = Number(state.user.dailyLimit || 6);
   const remaining = Math.max(0, Number(state.user.dailyRemaining || 0));
   planTitle.textContent = "Free access";
-  planCopy.textContent = `${remaining} of ${dailyLimit} solves left today. Upgrade with UPI to remove the daily cap.`;
+  planCopy.textContent = `${remaining} of ${dailyLimit} solves left today. Upgrade to weekly, monthly, or yearly access to remove the daily cap.`;
   planBadge.textContent = remaining > 0 ? `${remaining} left today` : "Daily limit reached";
   upgradeButton.hidden = false;
-  upgradeButton.textContent = "Upgrade with UPI";
+  upgradeButton.textContent = "View premium plans";
 }
 
 function applyAccountSnapshot(account) {
@@ -408,16 +416,71 @@ async function loadBillingCheckout() {
 }
 
 function renderBillingCheckout(checkout) {
-  if (!premiumPrice || !premiumUpiId || !premiumNote || !premiumPayLink) {
+  if (!premiumPlanOptions || !premiumPlanLabel || !premiumPrice || !premiumDuration || !premiumUpiId || !premiumNote || !premiumPayLink) {
     return;
   }
 
-  premiumPrice.textContent = `INR ${escapeHtml(checkout.priceInr || 0)}`;
+  const plans = Array.isArray(checkout.plans) ? checkout.plans : [];
+  if (!plans.length) {
+    premiumPlanOptions.innerHTML = "";
+    premiumPlanLabel.textContent = "Premium unavailable";
+    premiumPrice.textContent = "INR -";
+    premiumDuration.textContent = "No active plans are configured right now.";
+    premiumUpiId.textContent = checkout.upiId || "-";
+    premiumNote.textContent = "Premium checkout is unavailable right now.";
+    premiumPayLink.href = "#";
+    return;
+  }
+
+  if (!state.selectedPremiumPlanCode || !plans.some((plan) => plan.code === state.selectedPremiumPlanCode)) {
+    state.selectedPremiumPlanCode = checkout.defaultPlanCode || plans[0].code;
+  }
+
+  premiumPlanOptions.innerHTML = plans
+    .map((plan) => {
+      const selected = plan.code === state.selectedPremiumPlanCode;
+      return `
+        <button
+          class="premium-plan-option${selected ? " is-selected" : ""}"
+          type="button"
+          data-premium-plan="${escapeHtml(plan.code || "")}"
+        >
+          <span>${escapeHtml(plan.label || "Plan")}</span>
+          <strong>INR ${escapeHtml(plan.priceInr || 0)}</strong>
+          <small>${escapeHtml(plan.cycleLabel || "")}</small>
+        </button>
+      `;
+    })
+    .join("");
+
+  const selectedPlan = getSelectedPremiumPlan(checkout);
+  if (!selectedPlan) {
+    return;
+  }
+
+  premiumPlanLabel.textContent = selectedPlan.label || "Premium plan";
+  premiumPrice.textContent = `INR ${escapeHtml(selectedPlan.priceInr || 0)}`;
+  premiumDuration.textContent = selectedPlan.cycleLabel || "Unlimited daily solves while this plan stays active.";
   premiumUpiId.textContent = checkout.upiId || "-";
-  premiumNote.textContent = checkout.note
-    ? `Pay to ${checkout.upiName || "our UPI ID"} and keep this note or reference: ${checkout.note}`
+  premiumNote.textContent = selectedPlan.note
+    ? `Pay to ${checkout.upiName || "our UPI ID"} and keep this note or reference: ${selectedPlan.note}`
     : "Use any UPI app to complete the payment.";
-  premiumPayLink.href = checkout.upiUrl || "#";
+  premiumPayLink.href = selectedPlan.upiUrl || "#";
+}
+
+function getSelectedPremiumPlan(checkout = state.billingCheckout) {
+  const plans = Array.isArray(checkout?.plans) ? checkout.plans : [];
+  return plans.find((plan) => plan.code === state.selectedPremiumPlanCode) || plans[0] || null;
+}
+
+function handlePremiumPlanSelection(event) {
+  const button = event.target.closest("[data-premium-plan]");
+  if (!button || !state.billingCheckout) {
+    return;
+  }
+
+  state.selectedPremiumPlanCode = button.dataset.premiumPlan || "";
+  renderBillingCheckout(state.billingCheckout);
 }
 
 async function copyPremiumUpiId() {
@@ -448,6 +511,12 @@ async function handlePremiumSubmit(event) {
     return;
   }
 
+  const selectedPlan = getSelectedPremiumPlan();
+  if (!selectedPlan) {
+    showPremiumMessage("Choose a premium plan first.");
+    return;
+  }
+
   setPremiumSubmitting(true);
   clearPremiumMessage();
 
@@ -457,7 +526,10 @@ async function handlePremiumSubmit(event) {
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ transactionReference })
+      body: JSON.stringify({
+        planCode: selectedPlan.code,
+        transactionReference
+      })
     });
     const result = await response.json();
     if (!response.ok) {
@@ -474,7 +546,12 @@ async function handlePremiumSubmit(event) {
     if (result.premiumEmailSent === false) {
       showMessage(result.premiumEmailNotice || "Premium unlocked. Confirmation email could not be sent right now.");
     } else {
-      showMessage("Premium unlocked. You now have unlimited solves, and a confirmation email is on the way.");
+      const unlockedUntil = formatDate(result.user?.premiumExpiresAt);
+      showMessage(
+        unlockedUntil
+          ? `Premium unlocked until ${unlockedUntil}. A confirmation email is on the way.`
+          : "Premium unlocked. A confirmation email is on the way."
+      );
     }
     void window.solverAuth?.refreshSession?.();
   } catch (error) {
@@ -512,6 +589,10 @@ function clearPremiumMessage() {
   }
   premiumMessage.hidden = true;
   premiumMessage.textContent = "";
+}
+
+if (premiumPlanOptions) {
+  premiumPlanOptions.addEventListener("click", handlePremiumPlanSelection);
 }
 
 function renderHistory() {
@@ -1144,6 +1225,21 @@ function formatTimestamp(value) {
   });
 }
 
+function formatDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleDateString([], {
+    dateStyle: "medium"
+  });
+}
+
 function showMessage(message) {
   messageBanner.hidden = false;
   messageBanner.textContent = message;
@@ -1175,9 +1271,13 @@ function updateWorkspaceAccessState() {
     }
 
     if (state.user.premium) {
+      const premiumLabel = state.user.premiumPlanLabel || "Premium";
+      const premiumUntil = formatDate(state.user.premiumExpiresAt);
       generateButton.textContent = "Forge solution";
-      submitHint.textContent = "Premium active. Unlimited daily solves are available on this account.";
-      emptyStateTitle.textContent = "Premium workspace ready";
+      submitHint.textContent = premiumUntil
+        ? `${premiumLabel} active until ${premiumUntil}. Unlimited daily solves are available on this account.`
+        : "Premium active. Unlimited daily solves are available on this account.";
+      emptyStateTitle.textContent = `${premiumLabel} ready`;
       emptyStateCopy.textContent =
         "Paste any problem and generate as many structured solutions as you need.";
       return;

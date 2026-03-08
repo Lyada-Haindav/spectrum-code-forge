@@ -17,8 +17,12 @@ services:
         value: /var/data/spectrum-code-forge
       - key: FREE_DAILY_LIMIT
         value: "6"
-      - key: PREMIUM_PRICE_INR
-        value: "299"
+      - key: PREMIUM_WEEKLY_PRICE_INR
+        value: "99"
+      - key: PREMIUM_MONTHLY_PRICE_INR
+        value: "399"
+      - key: PREMIUM_YEARLY_PRICE_INR
+        value: "599"
       - key: PREMIUM_UPI_NAME
         value: Spectrum Code Forge
       - key: APP_BASE_URL

@@ -3,7 +3,10 @@ package com.spectrumforge;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Period;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 record AppConfig(
@@ -15,7 +18,7 @@ record AppConfig(
     int freeDailyLimit,
     String premiumUpiId,
     String premiumUpiName,
-    int premiumPriceInr,
+    List<PremiumPlan> premiumPlans,
     String brevoApiKey,
     String brevoSenderEmail,
     String brevoSenderName,
@@ -54,12 +57,12 @@ record AppConfig(
         if (dataDir.isBlank()) {
             dataDir = ".data";
         }
-        int premiumPriceInr = parseInt(value("PREMIUM_PRICE_INR", fileEnv), 299);
         String premiumUpiId = value("PREMIUM_UPI_ID", fileEnv);
         String premiumUpiName = value("PREMIUM_UPI_NAME", fileEnv);
         if (premiumUpiName.isBlank()) {
             premiumUpiName = "Spectrum Code Forge";
         }
+        List<PremiumPlan> premiumPlans = loadPremiumPlans(fileEnv);
 
         String brevoApiKey = value("BREVO_API_KEY", fileEnv);
         String brevoSenderEmail = value("BREVO_SENDER_EMAIL", fileEnv);
@@ -85,7 +88,7 @@ record AppConfig(
             freeDailyLimit,
             premiumUpiId,
             premiumUpiName,
-            premiumPriceInr,
+            premiumPlans,
             brevoApiKey,
             brevoSenderEmail,
             brevoSenderName,
@@ -98,11 +101,33 @@ record AppConfig(
     }
 
     boolean premiumCheckoutEnabled() {
-        return !premiumUpiId.isBlank() && premiumPriceInr > 0;
+        return !premiumUpiId.isBlank() && enabledPremiumPlans().stream().findFirst().isPresent();
     }
 
     boolean emailDeliveryEnabled() {
         return !brevoApiKey.isBlank() && !brevoSenderEmail.isBlank();
+    }
+
+    List<PremiumPlan> enabledPremiumPlans() {
+        return premiumPlans.stream()
+            .filter(PremiumPlan::enabled)
+            .toList();
+    }
+
+    PremiumPlan premiumPlan(String code) {
+        String normalizedCode = code == null ? "" : code.trim().toLowerCase();
+        for (PremiumPlan plan : enabledPremiumPlans()) {
+            if (plan.code().equals(normalizedCode)) {
+                return plan;
+            }
+        }
+        throw new AppException(400, "Choose a valid premium plan.");
+    }
+
+    PremiumPlan defaultPremiumPlan() {
+        return enabledPremiumPlans().stream()
+            .findFirst()
+            .orElseThrow(() -> new AppException(503, "Premium checkout is unavailable right now."));
     }
 
     private static String value(String key, Map<String, String> fileEnv) {
@@ -122,6 +147,32 @@ record AppConfig(
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private static List<PremiumPlan> loadPremiumPlans(Map<String, String> fileEnv) {
+        List<PremiumPlan> plans = new ArrayList<>();
+        plans.add(new PremiumPlan(
+            "weekly",
+            "Weekly plan",
+            "7 days access",
+            parseInt(value("PREMIUM_WEEKLY_PRICE_INR", fileEnv), 99),
+            Period.ofWeeks(1)
+        ));
+        plans.add(new PremiumPlan(
+            "monthly",
+            "Monthly plan",
+            "1 month access",
+            parseInt(value("PREMIUM_MONTHLY_PRICE_INR", fileEnv), 399),
+            Period.ofMonths(1)
+        ));
+        plans.add(new PremiumPlan(
+            "yearly",
+            "Yearly plan",
+            "1 year access",
+            parseInt(value("PREMIUM_YEARLY_PRICE_INR", fileEnv), 599),
+            Period.ofYears(1)
+        ));
+        return List.copyOf(plans);
     }
 
     private static Map<String, String> loadDotEnv(Path file) {
